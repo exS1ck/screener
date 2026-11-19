@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>TraderBot v0.1</title>
+<style>
+  :root {
+    --bg: #121212;
+    --bg-alt: #1a1a1a;
+    --border: #333;
+    --text: #e0e0e0;
+    --text-dim: #999;
+    --accent: #2979ff;
+    --pos: #4caf50;
+    --neg: #f44336;
+    --g-bg: #1b3a1f; --g-fg: #9be7a0;
+    --y-bg: #3d3414; --y-fg: #f3d36b;
+    --r-bg: #46191a; --r-fg: #ff9e9a;
+    --i-bg: #262b36; --i-fg: #b7c3dc;
+  }
+  body { font-family: sans-serif; max-width: 1900px; margin: 20px; background: var(--bg); color: var(--text); }
+  h1 { font-size: 20px; margin: 0 0 10px; }
+  a { color: var(--accent); }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 12px; }
+  th, td { border: 1px solid var(--border); padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: var(--bg-alt); white-space: nowrap; }
+  input, button, select {
+    font-size: 13px; background: var(--bg-alt); color: var(--text);
+    border: 1px solid var(--border); padding: 5px 8px; border-radius: 3px;
+  }
+  input[type=number] { width: 70px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  .sysbar { font-size: 12px; color: var(--text-dim); padding: 6px 10px; border: 1px solid var(--border);
+            background: var(--bg-alt); border-radius: 3px; min-height: 16px; }
+  .sysbar + .sysbar { margin-top: 4px; }
+  .sysbar .alert { color: var(--neg); font-weight: bold; }
+  .sysbar .ok { color: var(--pos); }
+  .tabs { margin-top: 16px; margin-bottom: 8px; }
+  .tab-btn { padding: 8px 18px; margin-right: 6px; color: var(--text-dim); }
+  .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .panel { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+  .dim { color: var(--text-dim); }
+  .pos { color: var(--pos); }
+  .neg { color: var(--neg); }
+  .chip { display: inline-block; padding: 1px 6px; margin: 1px 2px 1px 0; border-radius: 3px; white-space: nowrap;
+          background: #222; color: var(--text); }
+  .chip.g { background: var(--g-bg); color: var(--g-fg); }
+  .chip.y { background: var(--y-bg); color: var(--y-fg); }
+  .chip.r { background: var(--r-bg); color: var(--r-fg); }
+  .chip.i { background: var(--i-bg); color: var(--i-fg); }
+  .chip.o { background: #4a2a10; color: #ffb36b; }
+  .hint { font-size: 11px; color: var(--text-dim); }
+  .chip.b { font-weight: bold; }
+  td.coin { white-space: nowrap; }
+  td.coin b { font-size: 13px; }
+  .star { padding: 0 5px; font-size: 14px; border: none; background: none; color: var(--text-dim); }
+  .star.on { color: #ffc107; }
+  tr.focus td { background: #1c2230; }
+  .score { font-size: 15px; font-weight: bold; text-align: center; white-space: nowrap; }
+  .score.s4 { background: var(--g-bg); color: var(--g-fg); }
+  .score.s3 { background: var(--y-bg); color: var(--y-fg); }
+  .placeholder { color: var(--text-dim); padding: 20px 0; }
+  h3 { font-size: 15px; margin: 22px 0 6px; }
+  h4 { font-size: 13px; margin: 12px 0 4px; color: var(--text-dim); }
+  .subtabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin: 4px 0 8px; }
+  .sub-btn { border: 1px solid transparent; border-bottom: none; border-radius: 3px 3px 0 0; background: none;
+             color: var(--text-dim); padding: 7px 14px; margin-bottom: -1px; }
+  .sub-btn.active { border-color: var(--border); background: var(--bg-alt); color: var(--text); }
+  .sub-btn .cnt { display: inline-block; min-width: 16px; padding: 0 5px; margin-left: 4px; border-radius: 8px;
+                  background: #2a2a2a; color: var(--text-dim); font-size: 11px; }
+  .sub-btn .cnt.hot { background: var(--g-bg); color: var(--g-fg); }
+  th.narrow { width: 1%; white-space: nowrap; }
+  .sub-content { display: none; }
+  .sub-content.active { display: block; }
+  tr.dim td { color: var(--text-dim); }
+  .mono { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<h1>TraderBot v0.1 — скринер пампов</h1>
+<div class="sysbar" id="regimeBar" style="font-size:14px">Режим рынка: …</div>
+<div class="sysbar" id="engineBar">Движок: загрузка…</div>
+<div class="sysbar" id="feedBar">Лента: загрузка…</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="signals">Сигналы</button>
+  <button class="tab-btn" data-tab="watchlist">Watchlist</button>
+  <button class="tab-btn" data-tab="bot">Бот</button>
+  <button class="tab-btn" data-tab="trade">Торговля</button>
+  <button class="tab-btn" data-tab="stats">Статистика</button>
+  <button class="tab-btn" data-tab="export">Выгрузка</button>
+</div>
+
+<div class="tab-content active" id="tab-signals">
+  <div class="panel">
+    <label>За <select id="fHours"><option value="24">24 ч</option><option value="48">48 ч</option><option value="168">7 дней</option></select></label>
+    <label>База объёма <select id="fBase">
+      <option value="med">медиана (v0.1)</option>
+      <option value="mean">среднее 20 (исследование)</option>
+      <option value="any">любая</option>
+    </select></label>
+    <label>Балл от <select id="fScore"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+    <label>Оборот, $M <input type="number" id="fTurnMin" step="0.1"> – <input type="number" id="fTurnMax" step="1"></label>
+    <label><input type="checkbox" id="fFirst"> только первые за 12 ч</label>
+    <label><input type="checkbox" id="fConf"> только с подхватом</label>
+    <label><input type="checkbox" id="fOver"> показывать > +8%</label>
+    <label><input type="checkbox" id="fFocus"> только в фокусе</label>
+  </div>
+  <table id="sigTable">
+    <thead>
+      <tr>
+        <th>Монета, время</th>
+        <th>Балл</th>
+        <th>Контекст (фикс.)</th>
+        <th>Подхват (фикс.)</th>
+        <th>Сейчас (живое)</th>
+        <th>Выход (живое)</th>
+        <th>Бот</th>
+      </tr>
+    </thead>
+    <tbody id="sigBody"></tbody>
+  </table>
+</div>
+
+<div class="tab-content" id="tab-watchlist">
+  <div class="subtabs">
+    <button class="sub-btn active" data-sub="creep">Ползут сейчас <span class="cnt" id="cntCreep"></span></button>
+    <button class="sub-btn" data-sub="rsi">Перепроданность RSI <span class="cnt" id="cntRsi"></span></button>
+    <button class="sub-btn" data-sub="pumps">Пампы (шорт-счета) <span class="cnt" id="cntPumps"></span></button>
+    <button class="sub-btn" data-sub="s5">5m-искры <span class="cnt" id="cntS5"></span></button>
+  </div>
+  <div class="hint" style="margin:6px 0">Списки — не точки входа, а заготовка: монета уже на экране, когда придёт искра.</div>
+
+  <div class="sub-content active" id="sub-creep">
+    <div class="panel">
+      <label><input type="checkbox" id="wCreepAll"> показывать всех ползущих (без условия L/S и OI)</label>
+      <span class="dim" id="wCreepInfo"></span>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Монета</th><th>В списке с</th><th>Рост 6 ч<br><span class="dim">сейчас / на входе</span></th>
+            <th>Рост 24 ч</th><th>OI 6 ч<br><span class="dim">сейчас / на входе</span></th>
+            <th>L/S к неделе<br><span class="dim">сейчас / на входе</span></th><th>Оборот 24 ч</th><th>Цена</th></tr>
+      </thead>
+      <tbody id="creepBody"></tbody>
+    </table>
+  </div>
+
+  <div class="sub-content" id="sub-pumps">
+    <div class="hint">Живые эпизоды пампа (v0.4): минимум за 12 ч (base) → максимум после него (M) не меньше +25%, монета во вселенной.
+      Эпизод живёт 36 ч от base. Шорт-счета берут в эпизоде только свой первый сигнал: Ш1 — откат от M на 8%+ при RSI 1h ≥ 70
+      и режиме не «рост»; Ш2 — цена в пределах 2% от M, медвежье расхождение RSI 15m, альты за сутки в минусе.</div>
+    <table><thead><tr><th>Монета</th><th>Начало эпизода</th><th>base → M</th><th>Сейчас от M</th><th>Ш1 / Ш1-b</th><th>Ш2 / Ш2-b, Ш2-c</th>
+      <th>Осталось</th></tr></thead><tbody id="pumpBody"></tbody></table>
+    <h4>Большие пампы за 7 дней (Ш3): +100% от минимума недели, сигнал ищется 48 ч</h4>
+    <table><thead><tr><th>Монета</th><th>Начало эпизода</th><th>base → M</th><th>Сейчас от M</th><th>Сигнал Ш3</th><th>Пик</th>
+      <th>Окно сигнала</th></tr></thead><tbody id="pump7Body"></tbody></table>
+  </div>
+
+  <div class="sub-content" id="sub-rsi">
+    <div class="panel">
+      <b>Перепродан (RSI 14 &lt; 30) на:</b>
+      <label><input type="checkbox" class="rsiTf" value="1" checked> 1h</label>
+      <label><input type="checkbox" class="rsiTf" value="2" checked> 2h</label>
+      <label><input type="checkbox" class="rsiTf" value="3" checked> 3h</label>
+      <label><input type="checkbox" class="rsiTf" value="4" checked> 4h</label>
+      <label>оборот от $<input type="number" id="rsiTurn" value="0.5" step="0.1">M</label>
+      <span class="dim" id="rsiInfo"></span>
+    </div>
+    <div class="hint">Монета в списке, если RSI хотя бы на одном из отмеченных таймфреймов ниже 30 на последнем закрытом баре.
+      2h, 3h и 4h собраны из 1h с границами от 00:00 UTC (03:00 МСК). RSI пересчитывается каждый час, L/S и цена — каждые 5 минут.
+      Это заготовка, а не сигнал: в исследовании такой список не проверялся.</div>
+    <table>
+      <thead>
+        <tr><th>Монета</th><th>Перепродан на</th><th>RSI 1h</th><th>RSI 2h</th><th>RSI 3h</th><th>RSI 4h</th>
+            <th>С какого времени</th><th>L/S сейчас</th><th>L/S к неделе</th><th>Оборот 24 ч</th><th>Цена</th></tr>
+      </thead>
+      <tbody id="rsiBody"></tbody>
+    </table>
+  </div>
+
+  <div class="sub-content" id="sub-s5">
+    <div class="hint">Ранний сигнал «обрати внимание», не вход. Период — как в фильтре «За» на вкладке «Сигналы».</div>
+    <table>
+      <thead>
+        <tr><th class="narrow">Время</th><th class="narrow">Монета</th><th class="narrow">Рост бара</th>
+            <th class="narrow">Объём к медиане</th><th class="narrow">Оборот 24 ч</th>
+            <th>Контекст (фикс.)</th><th class="narrow">Сейчас</th></tr>
+      </thead>
+      <tbody id="s5Body"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-bot">
+  <div class="hint" style="margin:6px 0" id="botInfo"></div>
+  <h3>Лонг-счета</h3>
+  <div id="botCards" style="display:flex; gap:10px; flex-wrap:wrap"></div>
+  <h3>Шорт-счета <span class="dim" style="font-size:12px">v0.4 — Ш1, Ш2; v0.5 — Ш1-b, Ш2-b, Ш2-c, Ш3</span></h3>
+  <div id="shCards" style="display:flex; gap:10px; flex-wrap:wrap"></div>
+  <div class="panel" style="margin-top:8px; flex-direction:column; align-items:flex-start; gap:4px">
+    <div class="panel"><b>Лонг:</b> <span id="botAccBase"></span></div>
+    <div class="panel"><b>«Спокойные»:</b> <span id="botAccCalm"></span></div>
+    <div class="panel"><b>Шорт:</b> <span id="botAccShort"></span></div>
+    <div class="panel">
+      <button id="botAccLong">все лонги</button><button id="botAccShorts">все шорты</button>
+      <button id="botAccAll">все</button><button id="botAccNone">ни одного</button>
+      <label><input type="checkbox" id="botOld" checked> показывать сделки прошлых периодов счетов</label>
+    </div>
+  </div>
+
+  <h3>Открытые позиции</h3>
+  <table>
+    <thead><tr><th>Счёт</th><th>Сторона</th><th>Монета</th><th>Вход</th><th>Вход / средняя</th><th>Стоп</th>
+      <th>Цель / уровень выхода</th><th>Сейчас</th><th>Результат</th><th>До таймаута</th><th>Руками</th></tr></thead>
+    <tbody id="botOpen"></tbody>
+  </table>
+
+  <h3>Закрытые сделки</h3>
+  <table>
+    <thead><tr><th>Выход</th><th>Счёт</th><th>Сторона</th><th>Монета</th><th>Вход → выход</th><th>Исполнения</th>
+      <th>Причина</th><th>Результат</th><th>Против позиции / пробой</th><th>Руками</th><th>Модель</th></tr></thead>
+    <tbody id="botClosed"></tbody>
+  </table>
+
+  <details style="margin-top:10px"><summary><b>Поздние сигналы Ш1-b / Ш2-b / Ш2-c — виртуальные сделки</b>
+    <span class="dim">(не исполняются, вне баланса и лимитов)</span></summary>
+    <table><thead><tr><th>Поздний сигнал</th><th>Счёт</th><th>Монета</th><th>Первый сигнал</th><th>Памп: первый → поздний</th>
+      <th>Вход → выход</th><th>Причина</th><th>Результат</th><th>Источник</th></tr></thead><tbody id="virtBody"></tbody></table>
+  </details>
+
+  <h3>Пропущенные сигналы</h3>
+  <table>
+    <thead><tr><th>Сигнал</th><th>Счёт</th><th>Монета</th><th>Причина</th></tr></thead>
+    <tbody id="botSkipped"></tbody>
+  </table>
+</div>
+<div class="tab-content" id="tab-stats">
+  <div class="panel">
+    <label>Период <select id="stDays"><option value="0">весь журнал</option><option value="7">7 дней</option>
+      <option value="14">14 дней</option><option value="30">30 дней</option></select></label>
+    <label>База искр <select id="stBase"><option value="mean">среднее 20 (как в исследовании)</option>
+      <option value="med">медиана (v0.1)</option></select></label>
+    <button id="stReload">Пересчитать</button>
+    <span class="dim" id="stInfo"></span>
+  </div>
+  <div class="subtabs">
+    <button class="st-btn sub-btn active" data-st="expect">Сверка с исследованием</button>
+    <button class="st-btn sub-btn" data-st="score">Балл</button>
+    <button class="st-btn sub-btn" data-st="tags">Теги</button>
+    <button class="st-btn sub-btn" data-st="stages">Стадии и флаги</button>
+    <button class="st-btn sub-btn" data-st="accounts">Счета</button>
+  </div>
+
+  <div class="st-content sub-content active" id="st-expect">
+    <div class="hint">Ожидания — август–сентябрь 2026. Если живые цифры за 2–4 недели сильно отходят, сначала ищем ошибку в расчёте, потом — смену режима рынка. В скобках — сколько случаев: на десятках это ещё шум.</div>
+    <table><thead><tr><th>Что</th><th>Исследование</th><th>Журнал</th><th>Случаев</th><th>Примечание</th></tr></thead>
+      <tbody id="stExpect"></tbody></table>
+  </div>
+  <div class="st-content sub-content" id="st-score">
+    <div class="hint">Балл фиксируется на T+30: подхват, L/S в нижних 20%, рост 6 ч > 3, OI 30 мин ≥ +2%, искра в 06–12 МСК. «Памп» — +25% от открытия искры за 12 ч.</div>
+    <table><thead><tr><th>Балл</th><th>Искр в сутки</th><th>Исслед.</th><th>Стали пампом</th><th>Исслед.</th></tr></thead>
+      <tbody id="stScore"></tbody></table>
+  </div>
+  <div class="st-content sub-content" id="st-tags">
+    <div class="hint" id="stTagsInfo"></div>
+    <table><thead><tr><th>Тег</th><th>Искр</th><th>Стали пампом</th><th>Средний max за 12 ч</th>
+      <th>Из них с подхватом</th><th>Пампом среди подхвата</th></tr></thead>
+      <tbody id="stTags"></tbody></table>
+  </div>
+  <div class="st-content sub-content" id="st-stages">
+    <div class="hint">Моменты живых тегов на закрытии баров (T+30 … T+4.5 ч). Исход — «вилка» от цены в этот момент: +10% или −5%, что раньше; если ни то ни другое за 48 ч — результат по close.</div>
+    <table><thead><tr><th>Красных флагов</th><th>Моментов</th><th>Средний исход</th><th>Исслед.</th>
+      <th>−5% первым</th><th>Исслед.</th></tr></thead><tbody id="stFlags"></tbody></table>
+    <table><thead><tr><th>Стадия</th><th>Моментов</th><th>Средний исход</th><th>+10% первым</th><th>−5% первым</th></tr></thead>
+      <tbody id="stStages"></tbody></table>
+  </div>
+  <div class="st-content sub-content" id="st-accounts">
+    <div class="hint">«Модель» — сделка исследования по той же искре (5m-бары, выход ровно по уровню, издержки 0.2%). Разница бумаги и модели — цена проскальзывания и пробоев стопа.</div>
+    <table><thead><tr><th>Счёт</th><th>Сделок</th><th>Винрейт</th><th>Средняя</th><th>R</th><th>Проскальзывание входа</th>
+      <th>Пробой уровня</th><th>Выходов по бару</th><th>Бумага / модель на тех же искрах</th><th>Пропущено</th></tr></thead>
+      <tbody id="stAccounts"></tbody></table>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-trade">
+  <div class="panel" style="margin:8px 0">
+    <button id="panicBtn" style="font-size:15px; padding:8px 18px; background:#5a1515; border-color:#a33">⛔ Аварийная кнопка</button>
+    <span class="hint">снять все ордера и стопы бота, закрыть по рынку позиции, открытые ботом, выключить автоторговлю.
+      Твои ручные позиции и ордера не трогаются.</span>
+  </div>
+  <div class="panel" style="margin:8px 0">
+    <button id="trToggle" style="font-size:15px; padding:8px 18px">…</button>
+    <span id="trState"></span>
+  </div>
+  <div class="hint">Автоторговля на реальном счёте по шаблону B-c: сигнал — как у бумажного B-c на вкладке «Бот» (правило B:
+    15m-искра, первая за 12 ч, подхват, L/S в нижних 20% недели, тонкий стакан — офферы до +2% &lt; $50k; поток среднего 20),
+    размер — фиксированный, стоп — минимум искры − 0.2%, выход — трейлинг по закрытию 5m (8%, после +15% — 5%), 48 ч.
+    Выключение не закрывает открытые сделки — бот доведёт их до выхода.</div>
+
+  <h3>Сделки на бирже (B-c)</h3>
+  <div class="sysbar" id="liveSum"></div>
+  <h4>Открытые</h4>
+  <table><thead><tr><th>Монета</th><th>Вход</th><th>Объём</th><th>Цена входа</th><th>Стоп</th><th>Уровень выхода</th>
+    <th>Максимум</th><th>Сейчас</th><th>Результат</th><th></th></tr></thead><tbody id="liveOpen"></tbody></table>
+  <h4>Закрытые</h4>
+  <table><thead><tr><th>Выход</th><th>Монета</th><th>Вход → выход</th><th>Причина</th><th>Результат с комиссией</th>
+    <th>Бумажный B-c по той же искре</th><th></th></tr></thead><tbody id="liveClosed"></tbody></table>
+  <details><summary>Решения не входить</summary>
+    <table><thead><tr><th>Искра</th><th>Монета</th><th>Причина</th></tr></thead><tbody id="liveSkipped"></tbody></table></details>
+
+  <h3>Счёт Binance</h3>
+  <div class="sysbar" id="exBar">загрузка…</div>
+  <div id="exBody"></div>
+
+  <h3>Тестовый цикл</h3>
+  <div class="hint">Полный цикл на минимальный размер (≈$6): плечо 5× и изолированная маржа → вход по рынку → стоп STOP_MARKET
+    через algoOrder (−3% от входа, по последней цене, до 3 попыток) → проверка стопа на бирже → пауза 5 с → выход по рынку reduceOnly
+    → снятие стопа → проверка, что позиции и стопов не осталось. Если по монете уже есть позиция или ордера — тест не запускается.
+    Стоит комиссию и спред — несколько центов.</div>
+  <div class="panel" style="margin:6px 0">
+    <label>Монета <input id="testSym" placeholder="например, DOGEUSDT" style="width:180px"></label>
+    <button id="testBtn">Запустить тестовый цикл</button>
+    <span id="testMsg" class="dim"></span>
+  </div>
+  <div id="cmdBody"></div>
+</div>
+
+<div class="tab-content" id="tab-export">
+  <div class="hint" style="margin:6px 0">Один zip: журнал (искры со всем контекстом, индикаторами, исходами и сделками бота), живые теги,
+    списки, сырые данные и словарь колонок README.md. Его можно целиком загрузить в чат для анализа. Движок останавливать не нужно.</div>
+  <div class="panel" style="flex-direction:column; align-items:flex-start; gap:10px">
+    <div class="panel">
+      <b>Период:</b>
+      <label><input type="radio" name="exMode" value="all" checked> весь журнал <span class="dim" id="exRange"></span></label>
+      <label><input type="radio" name="exMode" value="days"> последние <input type="number" id="exDays" value="7" min="1" step="1"> дн.</label>
+      <label><input type="radio" name="exMode" value="range"> с <input type="date" id="exFrom"> по <input type="date" id="exTo"> (МСК)</label>
+    </div>
+    <div class="panel">
+      <b>Сырые данные:</b>
+      <label><input type="radio" name="exRaw" value="around" checked> вокруг 15m-искр: до <input type="number" id="exBefore" value="24" min="0"> ч,
+        после <input type="number" id="exAfter" value="48" min="0"> ч — только монеты с искрами</label>
+      <label><input type="radio" name="exRaw" value="all"> всё за период по всем монетам <span class="dim">(большой файл)</span></label>
+    </div>
+    <div class="panel">
+      <button id="exStart">Собрать выгрузку</button>
+      <span id="exStatus" class="dim"></span>
+    </div>
+  </div>
+  <h3>Готовые выгрузки</h3>
+  <table>
+    <thead><tr><th>Файл</th><th>Собран</th><th>Размер</th><th></th></tr></thead>
+    <tbody id="exFiles"></tbody>
+  </table>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fHours = $('fHours'), fBase = $('fBase'), fScore = $('fScore'), fTurnMin = $('fTurnMin'),
+      fTurnMax = $('fTurnMax'), fFirst = $('fFirst'), fConf = $('fConf'), fOver = $('fOver'), fFocus = $('fFocus');
+let UI = {}, TH = {};
+let ROWS = [], FOCUS = new Set(), PRICES = {}, S5 = [], CAPIT = [], WL = {creep: [], capit: []};
+let BOT = [], BOTSKIP = [], BOTDATA = null;
+
+// ---------------------------------------------------------------- форматирование
+const MSK = 'Europe/Moscow';
+function dayKey(ms) { return new Date(ms).toLocaleDateString('ru-RU', {timeZone: MSK}); }
+function fmtTime(ms) {
+  const d = new Date(ms);
+  const hm = d.toLocaleTimeString('ru-RU', {timeZone: MSK, hour: '2-digit', minute: '2-digit'});
+  if (dayKey(ms) === dayKey(Date.now())) return hm;
+  return d.toLocaleDateString('ru-RU', {timeZone: MSK, day: '2-digit', month: '2-digit'}) + ' ' + hm;
+}
+function num(x, d = 1) { return (x === null || x === undefined || !isFinite(x)) ? null : Number(x).toFixed(d); }
+function px(x) { return (x === null || x === undefined || !isFinite(x)) ? '?' : Number(Number(x).toPrecision(6)).toString(); }
+function pct(x, d = 1) { const v = num(x, d); return v === null ? '?' : (x > 0 ? '+' : '') + v + '%'; }
+function money(x) {
+  if (x === null || x === undefined) return '?';
+  if (x >= 1e6) return '$' + (x / 1e6).toFixed(1) + 'M';
+  return '$' + Math.round(x / 1000) + 'k';
+}
+function chip(text, cls = '', title = '') {
+  return `<span class="chip ${cls}"${title ? ` title="${title}"` : ''}>${text}</span>`;
+}
+const tv = s => `https://www.tradingview.com/chart/u5VMoReH/?symbol=BINANCE%3A${encodeURIComponent(s)}.P`;
+
+// ---------------------------------------------------------------- фильтры
+function setDefaults() {
+  document.getElementById('fHours').value = String(UI.feed_hours || 24);
+  document.getElementById('fTurnMin').value = UI.filter_turnover_min ?? 0.5;
+  document.getElementById('fTurnMax').value = UI.filter_turnover_max ?? 30;
+}
+function passes(r) {
+  const base = fBase.value;
+  const cand = base === 'med' ? r.cand_med : base === 'mean' ? r.cand_mean : (r.cand_med || r.cand_mean);
+  if (!cand) return false;
+  if (!fOver.checked && !r.in_range) return false;
+  const tmin = parseFloat(fTurnMin.value), tmax = parseFloat(fTurnMax.value);
+  if (isFinite(tmin) && !(r.q24 >= tmin)) return false;
+  if (isFinite(tmax) && !(r.q24 <= tmax)) return false;
+  if (fFirst.checked) {
+    const f = base === 'med' ? r.first12_med : base === 'mean' ? r.first12_mean : (r.first12_med || r.first12_mean);
+    if (!f) return false;
+  }
+  if (fConf.checked && !r.conf) return false;
+  const smin = parseInt(fScore.value);
+  if (smin > 0 && !(r.score >= smin)) return false;
+  if (fFocus.checked && !FOCUS.has(r.symbol)) return false;
+  return true;
+}
+
+// ---------------------------------------------------------------- ячейки
+function cellCoin(r) {
+  const on = FOCUS.has(r.symbol);
+  const base = fBase.value;
+  const first = base === 'mean' ? r.first12_mean : r.first12_med;
+  const rv = r.relvol_med !== null ? '×' + num(r.relvol_med) : '';
+  const rvm = r.relvol_mean20 !== null ? ` (ср ×${num(r.relvol_mean20)})` : '';
+  const rv40 = r.relvol_med40 !== null && r.relvol_med40 !== undefined ? ` (мед40 ×${num(r.relvol_med40)})` : '';
+  let tags = '';
+  // Повторная искра (v0.2): поля своего потока; в режиме «любая» — поток, где искра кандидат (медиана первой)
+  if (r.regime) tags += regimeChip(r.regime, `режим рынка в момент искры: альты 24 ч ${pct(r.reg_mkt24, 2)}, 72 ч ${pct(r.reg_mkt72, 2)}`);
+  const sfx = base === 'mean' || (base === 'any' && !r.cand_med) ? 'mean' : 'med';
+  const gap = r['rep_gap_' + sfx], vs = r['rep_vs_' + sfx], pconf = r['rep_conf_' + sfx];
+  const firstR = sfx === 'mean' ? r.first12r_mean : r.first12r_med;
+  if (first === 1) tags += chip('первая за 12 ч', 'i', nn(gap) ? `прошлая искра ${num(gap, 1)} ч назад` : 'раньше искр не было');
+  else if (first === 0) {
+    const g = nn(gap) ? (gap < 1 ? `${Math.round(gap * 60)} мин` : `${num(gap, 1)} ч`) : '?';
+    const w48 = nn(gap) && gap >= 4 && gap < 8;
+    tags += chip(`повторная: через ${g}${nn(vs) ? ` · ${pct(vs)} к прошлой` : ''}${pconf === 1 ? ' · у прошлой подхват' : ''}`,
+                 w48 ? 'i' : '', w48 ? 'окно 4–8 ч: гипотеза «затухло и продолжилось» (в исследовании +3.2%, 13 сделок)'
+                                 : 'прошлая искра этой монеты была меньше 12 ч назад; в бота повторные не берутся');
+    if (firstR === 1) tags += `<span class="hint" title="по исследованию «первая» считалась от последней принятой искры"> (по исследованию — первая)</span>`;
+  }
+  if (!r.in_range) tags += chip('> +8%', 'y');
+  if (r.incomplete > 0) tags += chip(`неполные: ${r.incomplete}`, 'y', 'баров нет в окне 24 ч');
+  if (r.src === 'backfill') tags += chip('история', '');
+  return `<button class="star ${on ? 'on' : ''}" data-sym="${r.symbol}" title="в фокус">${on ? '★' : '☆'}</button>`
+    + `<b>${r.symbol}</b> <a href="${tv(r.symbol)}" target="_blank" rel="noopener">TV</a>`
+    + `<div class="dim mono">${fmtTime(r.t)} · ${pct(r.ret)} · ${rv}${rvm}${rv40} · ${money((r.q24 || 0) * 1e6)}</div>`
+    + `<div>${tags}</div>`;
+}
+
+function cellScore(r) {
+  if (r.score === null || r.score === undefined) return {html: '<span class="dim">…</span>', cls: ''};
+  const q = r.score_nan > 0 ? `<span class="dim" title="нет данных для ${r.score_nan} признаков">?</span>` : '';
+  return {html: `${r.score}/5${q}`, cls: r.score >= 4 ? 's4' : r.score === 3 ? 's3' : ''};
+}
+
+function cellContext(r) {
+  if (!r.ctx_ms) return '<span class="dim">считается…</span>';
+  let h = '';
+  if (r.ls_pct !== null) {
+    const c = r.ls_pct < UI.ls_green ? 'g' : r.ls_pct >= UI.ls_red ? 'r' : '';
+    h += chip(`L/S ${Math.round(r.ls_pct)}% недели`, c);
+  } else h += chip('L/S ?', '', 'нет L/S на момент T');
+  if (r.pre6h_log !== null) {
+    const strong = r.pre6h_log > UI.pre6_strong;
+    h += chip(`6 ч ${pct(r.pre6h_log)}`, r.pre6h_log > UI.pre6_green ? 'g' + (strong ? ' b' : '') : '');
+  }
+  if (r.ask2_med !== null) {
+    const c = r.ask2_med < UI.ask2_green ? 'g' : r.ask2_med > UI.ask2_red ? 'r' : '';
+    h += chip(`стакан ${money(r.ask2_med)}`, c, `офферы до +2%, снимков: ${r.ask2_n}`);
+  } else h += chip('стакан ?', '', 'нет снимков за [T−24ч, T−6ч]');
+  const inMorning = r.hour_msk >= UI.morning_from && r.hour_msk < UI.morning_to;
+  h += chip(`${String(r.hour_msk).padStart(2, '0')} ч МСК`, inMorning ? 'g' : '');
+  if (r.q24 > UI.filter_turnover_max) h += chip('оборот не проверен', 'i');
+  if (r.week_range !== null && r.week_range > UI.week_info) h += chip(`серийный: неделя ${pct(r.week_range, 0)}`, 'i');
+  if (r.funding8 !== null && r.funding8 < UI.funding_info) h += chip(`шорты платят ${num(r.funding8, 3)}%`, 'i');
+  h += indicatorChips(r);
+  const H4 = 4 * 3600e3, D14 = 14 * 24 * 3600e3;
+  if (CAPIT.some(e => e.symbol === r.symbol && r.t >= e.t_in + H4 && r.t < e.t_in + H4 + D14
+                     && (!e.spent_ms || e.spent_ms > r.t)))
+    h += chip('капитуляция 4h', 'i', 'сигнал «капитуляции 4h» за 14 дней до искры');
+  return h;
+}
+
+// Пороги тегов индикаторов: из [ui] конфига, если заданы, иначе — значения исследования.
+const IND_DEF = {rsi_hot: 70, rsi_cold: 30, rsi4h_good: 60, natr3_quiet: 0.58, natr_ratio_hot: 1.56,
+                 spark_atr_lo: 3, spark_atr_hi: 7, wick_up_lo: 30, wick_up_hi: 50};
+const U = k => UI[k] ?? IND_DEF[k];
+const nn = x => x !== null && x !== undefined;
+
+function indicatorChips(r) {
+  let h = '';
+  if (nn(r.rsi15_pre)) {
+    h += chip(`RSI15 ${Math.round(r.rsi15_pre)}`, r.rsi15_pre > U('rsi_hot') ? 'g' : '',
+      `RSI(14) 15m на свече перед искрой${nn(r.mfi15_pre) ? `; MFI 15m ${Math.round(r.mfi15_pre)}` : ''}`);
+  }
+  if (nn(r.rsi1h_min24) || nn(r.rsi1h)) {
+    const cold = nn(r.rsi1h_min24) && r.rsi1h_min24 < U('rsi_cold');
+    h += chip(cold ? `RSI 1h был &lt; ${U('rsi_cold')} (мин ${Math.round(r.rsi1h_min24)})` : `RSI1h ${nn(r.rsi1h) ? Math.round(r.rsi1h) : '?'}`,
+      cold ? 'g' : '', `RSI 1h сейчас ${nn(r.rsi1h) ? Math.round(r.rsi1h) : '?'}, минимум за 24 ч ${nn(r.rsi1h_min24) ? Math.round(r.rsi1h_min24) : '?'}`
+        + (nn(r.mfi1h) ? `; MFI 1h ${Math.round(r.mfi1h)}` : ''));
+  }
+  if (r.extreme === 1) h += chip('крайности', 'g b', `RSI 15m перед искрой &gt; ${U('rsi_hot')} или RSI 1h за сутки &lt; ${U('rsi_cold')} — основа правила D`);
+  if (nn(r.rsi4h)) {
+    const rng = (a, b) => nn(a) && nn(b) ? `${Math.round(a)}–${Math.round(b)}` : '?';
+    h += chip(`RSI4h ${Math.round(r.rsi4h)}`, r.rsi4h < U('rsi4h_good') ? 'g' : '',
+      `RSI 4h за 7 дней ${rng(r.rsi4h_min7, r.rsi4h_max7)}, за 14 дней ${rng(r.rsi4h_min14, r.rsi4h_max14)}`);
+  }
+  if (nn(r.rsi4h_min14) && r.rsi4h_min14 < U('rsi_cold')) h += chip(`RSI 4h был &lt; ${U('rsi_cold')} за 14 дн.`, 'i', `минимум ${Math.round(r.rsi4h_min14)}`);
+  if (nn(r.natr_3d)) {
+    const quiet = r.natr_3d < U('natr3_quiet');
+    h += chip(`${quiet ? 'тихая: ' : ''}NATR 3д ${num(r.natr_3d, 2)}%`, quiet ? 'g' : '',
+      `NATR перед искрой ${nn(r.natr_pre) ? num(r.natr_pre, 2) : '?'}%, средний за сутки ${nn(r.natr_1d) ? num(r.natr_1d, 2) : '?'}%`);
+  }
+  if (nn(r.natr_ratio) && r.natr_ratio > U('natr_ratio_hot'))
+    h += chip(`волатильность ×${num(r.natr_ratio, 2)}`, 'r', 'NATR перед искрой к среднему за 3 дня: волатильность уже взорвалась');
+  if (nn(r.spark_atr)) {
+    const ok = r.spark_atr >= U('spark_atr_lo') && r.spark_atr <= U('spark_atr_hi');
+    h += chip(`искра ${num(r.spark_atr)} ATR`, ok ? 'g' : '', 'true range свечи-искры / ATR(14) перед ней; лучше всего 3–7');
+  }
+  if (nn(r.wick_up)) {
+    const ok = r.wick_up >= U('wick_up_lo') && r.wick_up <= U('wick_up_hi');
+    h += chip(`тень↑ ${Math.round(r.wick_up)}%`, ok ? 'g' : '',
+      `верхняя тень ${Math.round(r.wick_up)}%, нижняя ${nn(r.wick_dn) ? Math.round(r.wick_dn) : '?'}% от диапазона свечи; `
+      + `максимум от открытия ${pct(r.hi_from_open)}, закрытие от минимума ${pct(r.close_from_low)}`);
+  }
+  return h;
+}
+
+function cellConf(r) {
+  if (!r.conf_ms) {
+    const until = r.t + 30 * 60000;
+    return `<span class="dim">ждём ${fmtTime(until)}</span>`;
+  }
+  const sc = {'подхват': 'g', 'затухание': 'r', 'продавцы': 'r'}[r.scenario] || '';
+  let h = chip(r.scenario, sc);
+  if (r.vx3 !== null) h += chip(`объём ×${num(r.vx3)}`);
+  if (r.tbr3 !== null) h += chip(`покупки ${Math.round(r.tbr3 * 100)}%`);
+  if (r.r3 !== null) h += chip(`${pct(r.r3)} к искре`);
+  if (r.oi30 !== null) {
+    const c = r.oi30 > UI.oi30_warn ? 'y' : r.oi30 >= UI.oi30_green ? 'g' : r.oi30 < 0 ? 'r' : '';
+    const t = r.oi30 > UI.oi30_warn ? 'возможен вынос лонгов' : '';
+    h += chip(`OI ${pct(r.oi30)}`, c, t);
+  } else h += chip('OI ?', '', 'нет OI на T или T+30');
+  if (r.short_share !== null && r.short_share > UI.short_red) h += chip(`закрытие шортов ${Math.round(r.short_share)}%`, 'r');
+  if (nn(r.rsi15_conf)) h += chip(`RSI15 на T+30: ${Math.round(r.rsi15_conf)}`, '', 'RSI(14) 15m на свече T+15…T+30 — пишем для анализа');
+  return h;
+}
+
+function outcomeHtml(r) {
+  if (!r.out_level) return '';
+  let h = `<div class="dim mono">12 ч: max ${pct(r.out_max12)} / min ${pct(r.out_min12)}`;
+  if (r.out_level >= 3 && r.out_max48 !== null && r.out_max48 !== undefined) h += ` · 48 ч max ${pct(r.out_max48)}`;
+  h += '</div>';
+  let tags = '';
+  if (r.out_pump12 === 1) tags += chip('памп +25%', 'g b');
+  if (r.out_hit === 1) tags += chip('+10% раньше −5%', 'g');
+  else if (r.out_hit === -1) tags += chip('−5% раньше +10%', 'r');
+  if (r.out_trade !== null && r.out_trade !== undefined)
+    tags += chip(`модель: ${pct(r.out_trade)} (${r.out_trade_reason})`, r.out_trade > 0 ? 'g' : 'r');
+  return h + (tags ? `<div>${tags}</div>` : '');
+}
+
+const STAGE = {
+  'ранняя': ['g', 'вход возможен'],
+  'середина': ['y', 'вход только на обновлении максимума, не на откате'],
+  'поздняя': ['o', 'не входить'],
+  'выдыхание': ['r', 'не входить; держащим — выходить'],
+  'не классифицировано': ['', 'есть флаги, но до +10% не дошло'],
+};
+const FLAGS = [[1, '> +10% от искры'], [2, 'L/S > +5% от мин.'], [4, 'OI −4% от макс.'],
+               [8, 'объём > 50% пика'], [16, '+2% за 15 мин']];
+
+function stageHtml(r) {
+  if (!r.lv_stage) {
+    if (r.conf_ms && Date.now() - r.t < 4.5 * 3600e3) return '<div class="hint">стадия — на ближайшем закрытии бара</div>';
+    return '';
+  }
+  const [cls, hint] = STAGE[r.lv_stage] || ['', ''];
+  let h = `<div>${chip(r.lv_stage, cls + ' b')}${chip(`флагов ${r.lv_n_red}/5`, r.lv_n_red >= 3 ? 'r' : r.lv_n_red ? 'y' : 'g')}</div>`;
+  const fl = FLAGS.filter(([b]) => r.lv_flags & b).map(([, t]) => chip(t, 'r')).join('');
+  if (fl) h += `<div>${fl}</div>`;
+  h += `<div class="hint">${hint}</div>`;
+  const age = r.lv_ls_age ? ` · L/S ${r.lv_ls_age} мин назад` : '';
+  h += `<div class="hint">${r.lv_mode === 'fast' ? 'быстро' : 'бар'} ${new Date(r.lv_t).toLocaleTimeString('ru-RU', {timeZone: MSK})}${age}</div>`;
+  return h;
+}
+
+function cellExit(r) {
+  const openBot = BOT.some(b => b.symbol === r.symbol && b.t_spark === r.t && !b.exit_ms);
+  if (!FOCUS.has(r.symbol) && !openBot)
+    return '<span class="dim" title="колонка «Выход» — для монет в фокусе и с открытой позицией бота">— ☆</span>';
+  if (!r.lv_stage) return '<span class="dim">ждём живые теги…</span>';
+  let h = '';
+  // Выход v0.2 от входа T+30: трейлинг по закрытию 5m (8%, после +15% — 5%), стоп, проверка 6 ч, «спокойный»
+  if (r.entry && r.conf_ms) {
+    const E = r.entry, S = r.l - 0.002 * E;
+    if (r.lv_tr_reason) {
+      h += chip(`по закрытию 5m: ${r.lv_tr_reason} ${fmtTime(r.lv_tr_exit_ms)} по ${px(r.lv_tr_exit_px)} (${pct((r.lv_tr_exit_px / E - 1) * 100)})`,
+                r.lv_tr_reason === 'стоп' ? 'r b' : 'y b', 'выход по правилам v0.2 от входа T+30 уже был бы');
+    } else if (nn(r.lv_tr_level)) {
+      h += chip(`уровень ${px(r.lv_tr_level)} (${Math.round(r.lv_tr_p * 100)}%)`, '',
+                'максимум закрытий 5m с входа × (1 − p); закрытие 5m на уровне или ниже — выход сразу после закрытия');
+      h += `<div class="hint">закрытие 5m ниже уровня → выход; стоп ${px(S)}</div>`;
+    }
+    const six = r.t + 30 * 60e3 + 360 * 60e3;
+    if (r.lv_tr_six === 1) h += chip('6 ч: прибыль ≥ +1.5% — закрыть', 'y', 'проверка на 6-м часу (счёт A-c-t)');
+    else if (r.lv_tr_six === null && !r.lv_tr_reason && Date.now() < six)
+      h += `<div class="hint">проверка 6 ч в ${fmtTime(six)}: если цена ≥ ${px(E * 1.015)} — закрыть</div>`;
+    h += `<div class="hint">спокойный: ⅓ на ${px(E * 1.06)}, затем стоп ${px(Math.max(S, E * 1.002))}</div>`;
+  }
+  if (r.lv_exit_oi) h += chip('OI −10% от макс.: топливо кончилось', 'r');
+  if (r.lv_exit_ls) h += chip('L/S +10% от мин.: возможна раздача', 'r');
+  if (!r.lv_exit_oi && !r.lv_exit_ls && r.lv_max_gain >= 10)
+    h += `<div class="hint">маркеров нет: OI ${pct(r.lv_oi)} от макс. · L/S ${pct(r.lv_ls)} от мин.</div>`;
+  return h || '<span class="dim">—</span>';
+}
+
+function nowHtml(r) {
+  const p = PRICES[r.symbol] ?? r.price_now;
+  if (!p) return '<span class="dim">нет цены</span>' + outcomeHtml(r);
+  const g = (p / r.o - 1) * 100;
+  let h = `<span class="mono ${g >= 0 ? 'pos' : 'neg'}">${pct(g)}</span> <span class="dim">от искры</span>`;
+  if (r.entry) {
+    const e = (p / r.entry - 1) * 100;
+    h += `<br><span class="mono ${e >= 0 ? 'pos' : 'neg'}">${pct(e)}</span> <span class="dim">от входа T+30</span>`;
+  }
+  return h + outcomeHtml(r);
+}
+
+function cellBot(r) {
+  if (!r.conf_ms) return '';
+  const med = ['A', 'B', 'C', 'D'].filter(k => r['r' + k]);
+  const mean = ['A', 'B', 'C', 'D'].filter(k => r['r' + k + '_mean']);
+  let h = med.length ? med.map(k => chip(k, 'g b')).join('') : '<span class="dim">—</span>';
+  if (mean.length) h += `<div class="dim">по ср.: ${mean.join(' ')}</div>`;
+  const tr = BOT.filter(b => b.symbol === r.symbol && b.t_spark === r.t);
+  tr.sort((a, b) => a.acc.localeCompare(b.acc)).forEach(b => {
+    if (!b.exit_ms) h += `<div>${b.acc}: вход ${px(b.entry_price)}, стоп −${num(b.stop_pct)}%</div>`;
+    else h += `<div>${b.acc}: ${chip(pct(b.pnl_pct), b.pnl_pct > 0 ? 'g' : 'r')} <span class="dim">${b.exit_reason}</span></div>`;
+  });
+  BOTSKIP.filter(b => b.symbol === r.symbol && b.t_spark === r.t)
+    .forEach(b => h += `<div class="dim">${b.acc}: пропуск — ${b.reason}</div>`);
+  return h;
+}
+
+// ---------------------------------------------------------------- лента
+function render() {
+  const rows = ROWS.filter(passes);
+  const body = document.getElementById('sigBody');
+  body.innerHTML = rows.map(r => {
+    const sc = cellScore(r);
+    const id = `${r.symbol}-${r.t}`;
+    return `<tr class="${FOCUS.has(r.symbol) ? 'focus' : ''}">
+      <td class="coin">${cellCoin(r)}</td>
+      <td class="score ${sc.cls}">${sc.html}</td>
+      <td>${cellContext(r)}</td>
+      <td>${cellConf(r)}</td>
+      <td><div class="now" data-id="${id}">${nowHtml(r)}</div>${stageHtml(r)}</td>
+      <td>${cellExit(r)}</td>
+      <td>${cellBot(r)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="dim">Нет искр под фильтр.</td></tr>';
+  renderFeedBar(rows);
+}
+
+function renderFeedBar(shown) {
+  const base = fBase.value;
+  const first = r => base === 'mean' ? r.first12_mean : r.first12_med;
+  const inFeed = ROWS.filter(r => (base === 'mean' ? r.cand_mean : r.cand_med) && r.in_range && r.liq_tested);
+  const n1 = inFeed.filter(r => first(r) === 1);
+  const conf = n1.filter(r => r.conf === 1).length;
+  const k = s => ROWS.filter(r => r[base === 'mean' ? `r${s}_mean` : `r${s}`]).length;
+  document.getElementById('feedBar').innerHTML =
+    `За ${fHours.value} ч, база «${fBase.options[fBase.selectedIndex].text}», оборот $0.5–30M: искр ${inFeed.length}, `
+    + `первых за 12 ч ${n1.length}, из них с подхватом ${conf}; правила A ${k('A')} · B ${k('B')} · C ${k('C')}. `
+    + `Показано строк: ${shown.length}.`;
+}
+
+function updatePrices() {
+  const byId = {};
+  ROWS.forEach(r => byId[`${r.symbol}-${r.t}`] = r);
+  document.querySelectorAll('#sigBody .now').forEach(td => {
+    const r = byId[td.dataset.id];
+    if (r) td.innerHTML = nowHtml(r);
+  });
+  document.querySelectorAll('#s5Body td.now').forEach(td => {
+    const r = S5[Number(td.dataset.i)];
+    if (r) td.innerHTML = nowHtml(r);
+  });
+}
+
+let loading = false, again = false;
+async function loadSignals() {
+  if (loading) { again = true; return; }
+  loading = true;
+  try {
+    const res = await fetch(`/api/signals?hours=${fHours.value}`);
+    const d = await res.json();
+    ROWS = d.rows;
+    FOCUS = new Set(d.focus);
+    CAPIT = d.capit || [];
+    BOT = d.bot || [];
+    BOTSKIP = d.skipped || [];
+    render();
+    if (document.getElementById('tab-watchlist').classList.contains('active')) { loadSparks5(); loadWatch(); }
+    if (document.getElementById('tab-bot').classList.contains('active')) loadBot();
+    if (document.getElementById('tab-trade').classList.contains('active')) loadTrade();
+  } catch (e) {
+    document.getElementById('feedBar').innerHTML = `<span class="alert">Ошибка загрузки ленты: ${e}</span>`;
+  } finally {
+    loading = false;
+    if (again) { again = false; loadSignals(); }
+  }
+}
+
+// ---------------------------------------------------------------- списки наблюдения
+async function loadWatch() {
+  if (document.getElementById('sub-pumps') && document.getElementById('sub-pumps').classList.contains('active')) loadPumps();
+  WL = await (await fetch('/api/watchlist')).json();
+  renderWatch();
+}
+function lsChip(v, exact = 1) {
+  if (v === null || v === undefined) return '?';
+  const c = v < UI.ls_green ? 'g' : v >= UI.ls_red ? 'r' : '';
+  return chip(Math.round(v) + '%' + (exact === 0 ? '*' : ''), c, exact === 0 ? 'L/S неточный: точка ещё не опубликована' : '');
+}
+function renderWatch() {
+  const all = document.getElementById('wCreepAll').checked;
+  const cr = WL.creep.filter(r => all || r.in_list)
+    .sort((a, b) => (b.in_list - a.in_list) || ((b.oi6_in ?? -1e9) - (a.oi6_in ?? -1e9)) || ((b.pre6 ?? 0) - (a.pre6 ?? 0)));
+  const nCreep = WL.creep.filter(r => r.in_list).length;
+  setCount('cntCreep', nCreep, true);
+  document.getElementById('wCreepInfo').textContent =
+    `ползут ${WL.creep.length}, из них в списке (L/S < ${UI.ls_green}, OI 6 ч > +3%) — ${WL.creep.filter(r => r.in_list).length}`;
+  document.getElementById('creepBody').innerHTML = cr.map(r => {
+    const hrs = ((WL.server_ms - r.t_in - 300000) / 3600e3);
+    const oiC = v => v === null ? '' : v > 3 ? 'g' : v < 0 ? 'r' : '';
+    return `<tr class="${r.in_list ? '' : 'dim'}">
+      <td><b>${r.symbol}</b> <a href="${tv(r.symbol)}" target="_blank" rel="noopener">TV</a></td>
+      <td class="mono">${fmtTime(r.t_in + 300000)} <span class="dim">· ${hrs < 1 ? Math.round(hrs * 60) + ' мин' : hrs.toFixed(1) + ' ч'}</span></td>
+      <td class="mono">${pct(r.pre6)} <span class="dim">/ ${pct(r.pre6_in)}</span></td>
+      <td class="mono">${pct(r.r24)}</td>
+      <td>${chip(pct(r.oi6), oiC(r.oi6))} <span class="dim">/ ${pct(r.oi6_in)}</span></td>
+      <td>${lsChip(r.ls_pct)} <span class="dim">/</span> ${lsChip(r.ls_in, r.ls_exact)}</td>
+      <td class="mono">${money((r.q24 || 0) * 1e6)}</td>
+      <td class="mono">${r.price ?? ''}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" class="dim">Никто не ползёт под условие.</td></tr>';
+
+  renderRsi();
+}
+
+function renderRsi() {
+  const tfs = [...document.querySelectorAll('.rsiTf')].filter(x => x.checked).map(x => Number(x.value));
+  const tmin = parseFloat(document.getElementById('rsiTurn').value);
+  const TH = 30;
+  const rows = (WL.rsi || []).map(r => {
+    const hit = tfs.filter(m => nn(r['rsi' + m + 'h']) && r['rsi' + m + 'h'] < TH);
+    const since = hit.map(m => r['since' + m + 'h']).filter(nn);
+    const mn = Math.min(...hit.map(m => r['rsi' + m + 'h']));
+    return {r, hit, since: since.length ? Math.min(...since) : null, mn};
+  }).filter(x => x.hit.length && !(isFinite(tmin) && !(x.r.q24 >= tmin)))
+    .sort((a, b) => (b.hit.length - a.hit.length) || (a.mn - b.mn));
+  setCount('cntRsi', rows.length, true);
+  document.getElementById('rsiInfo').textContent = `в списке ${rows.length} из ${(WL.rsi || []).length} перепроданных хоть где-то`;
+  const cell = (r, m) => {
+    const v = r['rsi' + m + 'h'];
+    if (!nn(v)) return '<td class="dim">—</td>';
+    return `<td class="mono">${v < TH ? `<b class="neg">${num(v, 1)}</b>` : num(v, 1)}</td>`;
+  };
+  document.getElementById('rsiBody').innerHTML = rows.map(({r, hit, since}) => {
+    const lsc = !nn(r.ls_pct) ? '' : r.ls_pct < UI.ls_green ? 'g' : r.ls_pct >= UI.ls_red ? 'r' : '';
+    return `<tr>
+      <td><b>${r.symbol}</b> <a href="${tv(r.symbol)}" target="_blank" rel="noopener">TV</a></td>
+      <td>${hit.map(m => chip(`${m}h ${num(r['rsi' + m + 'h'], 1)}`, 'r')).join('')}</td>
+      ${[1, 2, 3, 4].map(m => cell(r, m)).join('')}
+      <td class="mono">${since ? fmtTime(since) : ''}</td>
+      <td class="mono">${nn(r.ls) ? num(r.ls, 3) : '?'}</td>
+      <td>${nn(r.ls_pct) ? chip(Math.round(r.ls_pct) + '%' + (r.ls_exact === 0 ? '*' : ''), lsc, r.ls_exact === 0 ? 'неполная неделя L/S' : '') : '?'}</td>
+      <td class="mono">${money((r.q24 || 0) * 1e6)}</td>
+      <td class="mono">${PRICES[r.symbol] ?? r.price ?? ''}</td></tr>`;
+  }).join('') || '<tr><td colspan="11" class="dim">Сейчас никто не перепродан на отмеченных таймфреймах.</td></tr>';
+}
+
+// ---------------------------------------------------------------- бот
+const ACCOUNTS = ['A', 'B', 'C', 'A-c', 'B-c', 'D-c', 'A-c-t', 'U'];
+const TRADE_ACC = 'U-торг';
+const RULES = {A: 'искра + подхват + L/S < 20', B: 'A + тонкий стакан', C: 'A + рост 6 ч > 3%',
+               'A-c': 'A, выход по закрытию 5m', 'B-c': 'A + тонкий стакан, выход по закрытию 5m',
+               'D-c': 'A + крайности RSI, выход по закрытию 5m',
+               'A-c-t': 'A, по закрытию 5m + проверка 6 ч',
+               U: 'A (среднее 20) + стакан < $150k + OI ≥ $1M + OI ≥ 0.4 × оборот, выход по закрытию 5m'};
+const EXPECT = {A: 'исследование: ~2.6 сделки в сутки, винрейт 48%, +2.7%, +0.48R',
+                B: 'исследование: ~1.1 в сутки, +4.8%', C: 'исследование: ~0.9 в сутки, +3.6%',
+                'A-c': '1m-проверка: +2.66%, винрейт 44%; трейлинг 60%, стоп 23%, таймаут 17%',
+                'B-c': 'в исследовании v0.2 отдельно не проверялся — сравнивай с B',
+                'D-c': '1m-проверка: +4.91%, винрейт 58%',
+                'A-c-t': '1m-проверка: +2.95%, винрейт 53%; трейлинг 43%, 6 ч 25%, стоп 22%, таймаут 10%',
+                U: 'та же система, что на вкладке «Торговля», но всегда включена'};
+function manCell(t) {
+  const key = `data-acc="${t.acc}" data-sym="${t.symbol}" data-t="${t.t_spark}"`;
+  if (t.man_price) {
+    const res = (t.man_price / t.entry_price - 1) * 100;
+    return `${chip(`руками ${fmtTime(t.man_ms)} по ${px(t.man_price)} (${pct(res)})`, res >= 0 ? 'g' : 'r')}
+            <button class="manBtn" ${key} data-cancel="1">отменить</button>`;
+  }
+  return `<button class="manBtn" ${key}>закрыть руками</button>`;
+}
+
+let SHORTS = null;
+async function loadBot() {
+  const [a, b] = await Promise.all([fetch('/api/bot'), fetch('/api/shorts')]);
+  BOTDATA = await a.json();
+  SHORTS = await b.json();
+  renderBot();
+}
+const SH_ACCOUNTS = ['Ш1', 'Ш1-b', 'Ш1-c', 'Ш1-d', 'Ш2', 'Ш2-b', 'Ш2-c', 'Ш3'];
+const SH_KIND = {'Ш1': 's1', 'Ш1-b': 's1', 'Ш1-c': 's1', 'Ш1-d': 's1', 'Ш2': 'grid', 'Ш2-b': 'grid', 'Ш3': 'grid', 'Ш2-c': 'single'};
+const SH_HZ = {s1: 12, grid: 24, single: 48};
+const SH_RULE = {'Ш1': 'памп ≥ +25% за 12 ч, откат от максимума ≥ 8%, RSI 1h ≥ 70, режим не «рост»; стоп M×1.01, цель −5%, 12 ч',
+                 'Ш1-b': 'сигнал Ш1, памп в момент сигнала 35–55%; сделка как Ш1',
+                 'Ш1-c': 'сигнал Ш1, доля тейкер-покупок за последний час ≥ 48%; сделка как Ш1',
+                 'Ш1-d': 'сигнал Ш1, тейкер-покупки за час ≥ 48% и памп от минимума не дольше 12 ч; сделка как Ш1',
+                 'Ш2': 'памп ≥ +25%, цена у максимума, расхождение RSI 15m, альты 24 ч < 0; сетка +8/+16/+24%, цель средняя −5%, стоп +29%, 24 ч',
+                 'Ш2-b': 'сигнал Ш2, памп от 35%; сетка как Ш2',
+                 'Ш2-c': 'сигнал Ш2, памп от 35%; один шорт: стоп +30%, цель −10%, 48 ч',
+                 'Ш3': 'памп ≥ +100% за 7 дней, цена у максимума, RSI 4h был ≥ 70 и отошёл на 10; сетка как Ш2'};
+const SH_EXP = {'Ш1': 'эталон: ~4.5 в сутки, +0.72%, винрейт 71%, +0.068R',
+                'Ш1-b': 'эталон: ~1.5 в сутки, +1.86%, винрейт 78%, +0.164R',
+                'Ш1-c': 'эталон: ~2.8 в сутки, +1.65%, винрейт 78%, +0.154R; вживую (15–29.10) пока +0.032R',
+                'Ш1-d': 'эталон: ~1.7 в сутки, +2.53%, винрейт 84%, +0.233R; вживую (15–29.10) пока +0.041R',
+                'Ш2': 'эталон: ~3.5 в сутки, +3.07% от заявки, винрейт 92%, +0.048R',
+                'Ш2-b': 'эталон: ~1.1 в сутки, +5.56% от заявки, винрейт 97%, +0.087R',
+                'Ш2-c': 'эталон: ~1.1 в сутки, +3.03%, винрейт 81%, +0.101R',
+                'Ш3': 'эталон: ~0.25 в сутки (7–8 в месяц), +8.90% от заявки, винрейт 100%, +0.139R'};
+const SH_VEXP = {'Ш1-b': 'эталон: +0.069R на сделку', 'Ш2-b': 'эталон: −0.014R', 'Ш2-c': 'эталон: +0.072R'};
+function resetBtn(a, ep) {
+  return `<button class="accReset" data-acc="${a}" title="начать счёт заново: баланс снова $100, старые сделки остаются как прошлый период">начать заново</button>`
+    + (ep ? ` <span class="dim">период с ${fmtTime(ep)}</span>` : '');
+}
+async function loadPumps() {
+  const d = await (await fetch('/api/shorts')).json();
+  SHORTS = d;
+  setCount('cntPumps', d.episodes.length + (d.episodes7 || []).length, true);
+  const sig = (t, pmp, late, okText) => {
+    if (!t) return '<span class="dim">—</span>';
+    let x = chip(fmtTime(t + 300000), 'i');
+    if (pmp !== null && pmp !== undefined) x += ` <span class="dim">памп +${Math.round(pmp)}%</span>`;
+    if (late === 'none') x += ` ${chip(okText, 'g')}`;
+    else if (late === 'watch') x += ` ${chip('ждём поздний', 'y', 'первый сигнал не прошёл фильтр силы пампа — ищем поздний')}`;
+    else if (late === 'done') x += ` ${chip('поздний был', '')}`;
+    return x;
+  };
+  document.getElementById('pumpBody').innerHTML = d.episodes.map(e => {
+    const left = (e.t_base + 432 * 300000 - d.server_ms) / 3600e3;
+    const fromM = e.M && e.last ? (e.last / e.M - 1) * 100 : null;
+    return `<tr><td><b>${e.symbol}</b> <a href="${tv(e.symbol)}" target="_blank" rel="noopener">TV</a></td>
+      <td class="mono">${fmtTime(e.start_t + 300000)}</td>
+      <td class="mono">${px(e.base)} → ${px(e.M)} <span class="dim">${e.M ? pct((e.M / e.base - 1) * 100, 0) : ''}</span></td>
+      <td class="mono">${fromM === null ? '?' : pct(fromM, 1)}</td>
+      <td>${sig(e.s1_t, e.s1_pump, e.late1, 'Ш1-b вошёл')}</td>
+      <td>${sig(e.s2_t, e.s2_pump, e.late2, 'Ш2-b/c вошли')}</td>
+      <td class="mono">${left > 0 ? left.toFixed(1) + ' ч' : 'закончился'}</td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="dim">Сейчас пампов нет.</td></tr>';
+  document.getElementById('pump7Body').innerHTML = (d.episodes7 || []).map(e => {
+    const left = (e.start_t + 576 * 300000 - d.server_ms) / 3600e3;
+    const fromM = e.M && e.last ? (e.last / e.M - 1) * 100 : null;
+    return `<tr><td><b>${e.symbol}</b> <a href="${tv(e.symbol)}" target="_blank" rel="noopener">TV</a></td>
+      <td class="mono">${fmtTime(e.start_t + 300000)}</td>
+      <td class="mono">${px(e.base)} → ${px(e.M)} <span class="dim">${e.M ? pct((e.M / e.base - 1) * 100, 0) : ''}</span></td>
+      <td class="mono">${fromM === null ? '?' : pct(fromM, 1)}</td>
+      <td>${e.s3_t ? chip(fmtTime(e.s3_t + 300000), 'i') : '<span class="dim">—</span>'}</td>
+      <td class="mono">${e.t_peak ? fmtTime(e.t_peak + 300000) + ' · ' + px(e.peak) : '<span class="dim">после окна</span>'}</td>
+      <td class="mono">${left > 0 ? 'ещё ' + left.toFixed(1) + ' ч' : 'закончилось'}</td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="dim">Больших пампов сейчас нет.</td></tr>';
+}
+function renderBot() {
+  const d = BOTDATA, sh = SHORTS;
+  if (!d || !sh) return;
+  const days = d.first_ms ? (d.server_ms - d.first_ms) / 86400e3 : 0;
+  document.getElementById('botInfo').innerHTML = `Бумага, флаги правил лонгов — поток ${d.stream === 'med' ? 'медианы (v0.1)' : 'среднего 20'}. `
+    + `Депозит $${d.deposit} на счёт, риск 1%. Работает ${days.toFixed(1)} дн. Шорт-счета исполняются по закрытым 5m-барам, как в эталоне.`;
+  const line = (label, n, nOpen, bal, win, avg, extra = '') => `<tr>
+      <td>${label}</td>
+      <td class="mono ${bal >= d.deposit ? 'pos' : 'neg'}">$${bal.toFixed(2)} <span class="dim">${pct((bal / d.deposit - 1) * 100, 1)}</span></td>
+      <td class="mono">${n}${nOpen ? `+${nOpen}` : ''}</td>
+      <td class="mono">${n ? Math.round(win * 100) + '%' : '—'}</td>
+      <td class="mono">${n ? pct(avg, 2) : '—'}${extra}</td></tr>`;
+  const prevLine = p => p ? `<div class="dim">прошлый период: ${p.n} сделок, $${num(p.pnl, 2)}, винрейт ${Math.round(p.winrate * 100)}%, ${num(p.avg_r, 2)}R</div>` : '';
+  // ---- лонг-карточки
+  document.getElementById('botCards').innerHTML = ACCOUNTS.map(a => {
+    const twin = a + '·сп';
+    const s = d.sums[a] || {n: 0, pnl: 0}, sc = d.sums[twin] || {n: 0, pnl: 0};
+    const m = d.manual[a] || {n: 0, pnl: 0}, mc = d.manual[twin] || {n: 0, pnl: 0};
+    const nOpen = x => d.trades.filter(t => t.acc === x && !t.exit_ms && !t.old_period).length;
+    const manTxt = x => x.n_man ? ` <span class="dim">(руками ${x.n_man})</span>` : '';
+    return `<div class="sysbar" style="min-width:420px">
+      <div><b style="font-size:15px">Счёт ${a}</b> <span class="dim">${RULES[a]}</span></div>
+      <table style="margin-top:4px"><thead><tr><th>Вариант</th><th>Баланс</th><th>Сделок</th><th>Винрейт</th><th>Средняя</th></tr></thead><tbody>
+        ${line('по правилам', s.n, nOpen(a), d.deposit + (s.pnl || 0), s.winrate, s.avg_pct, s.n ? ` · ${num(s.avg_r, 2)}R` : '')}
+        ${line('по правилам + руками', m.n, 0, d.deposit + (m.pnl || 0), m.winrate, m.avg_pct, manTxt(m))}
+        ${line('спокойный', sc.n, nOpen(twin), d.deposit + (sc.pnl || 0), sc.winrate, sc.avg_pct)}
+        ${line('спокойный + руками', mc.n, 0, d.deposit + (mc.pnl || 0), mc.winrate, mc.avg_pct, manTxt(mc))}
+      </tbody></table>
+      ${prevLine((d.prev || {})[a])}
+      <div class="dim">пропущено ${d.n_skip[a] || 0} / ${d.n_skip[twin] || 0} · выходов по бару ${s.by_bar || 0}
+        · пробой уровня ${s.avg_breach === null || s.avg_breach === undefined ? '—' : pct(s.avg_breach, 2)}</div>
+      <div class="hint">${EXPECT[a]}</div>
+      <div style="margin-top:4px">${resetBtn(a, (d.epochs || {})[a])} ${resetBtn(twin, (d.epochs || {})[twin]).replace('начать заново', 'начать заново ·сп')}</div>
+    </div>`;
+  }).join('');
+  // ---- шорт-карточки
+  document.getElementById('shCards').innerHTML = SH_ACCOUNTS.filter(a => sh.sums[a]).map(a => {
+    const s = sh.sums[a], m = sh.manual[a], md = sh.model[a], v = sh.virtual[a], p = (sh.prev || {})[a];
+    const bal = sh.deposit + s.pnl, balm = sh.deposit + m.pnl;
+    const unit = SH_KIND[a] === 'grid' ? ' от заявки' : '';
+    const rs = Object.entries(md.reasons || {}).map(([k, x]) => `${k} ${Math.round(x / md.n * 100)}%`).join(', ');
+    return `<div class="sysbar" style="min-width:420px">
+      <div><b style="font-size:15px">Счёт ${a}</b> <span class="dim">${SH_RULE[a]}</span></div>
+      <div style="font-size:16px; margin-top:4px" class="${bal >= sh.deposit ? 'pos' : 'neg'}">$${bal.toFixed(2)}
+        <span class="dim" style="font-size:12px">(${pct((bal / sh.deposit - 1) * 100, 2)})</span></div>
+      <div>сделок ${s.n}${s.open ? ` + открыто ${s.open}` : ''} · винрейт ${s.n ? Math.round(s.wins / s.n * 100) + '%' : '—'}
+        · средняя ${s.avg === null ? '—' : pct(s.avg, 2)}${unit} · ${s.R === null ? '—' : num(s.R, 3) + 'R'} · пропущено ${s.skipped}</div>
+      <div>с ручными закрытиями: $${balm.toFixed(2)} <span class="dim">(руками ${m.n_man})</span></div>
+      ${SH_VEXP[a] ? `<div>поздние сигналы: ${v.n} сделок${v.open ? ` + открыто ${v.open}` : ''}, итог ${num(v.Rsum, 2)}R${v.n ? ` (${num(v.R, 3)}R на сделку)` : ''} <span class="dim">${SH_VEXP[a]}</span></div>` : ''}
+      <div class="dim">модель по истории: ${md.n ? `${md.n} сделок${md.per_day ? `, ${num(md.per_day, 1)} в сутки` : ''}, средняя ${pct(md.avg, 2)}, винрейт ${Math.round(md.wins / md.n * 100)}%, ${num(md.R, 3)}R; ${rs}` : 'нет'}</div>
+      ${p ? `<div class="dim">прошлый период: ${p.n} сделок, $${num(p.pnl, 2)}, ${num(p.R, 3)}R</div>` : ''}
+      <div class="hint">${SH_EXP[a]}</div>
+      <div style="margin-top:4px">${resetBtn(a, (sh.epochs || {})[a])}</div></div>`;
+  }).join('');
+  // ---- общие таблицы
+  const showOld = document.getElementById('botOld').checked;
+  const accOn = t => BOT_ACCS.has(t.acc) && (showOld || !t.old_period);
+  const oldTag = t => t.old_period ? ' <span class="dim" title="сделка прошлого периода счёта">прошлый период</span>' : '';
+  const H = 3600e3;
+  const longs = d.trades.filter(accOn).map(t => ({...t, side: 'лонг', open: !t.exit_ms, t_in: t.entry_ms, t_out: t.exit_ms}));
+  const shorts = sh.trades.filter(t => t.status !== 'skipped' && accOn(t))
+    .map(t => ({...t, side: 'шорт', open: t.status === 'open', t_in: t.t_signal + 300000, t_out: t.exit_t ? t.exit_t + 300000 : null}));
+  const shRes = (t, p) => {
+    const k = SH_KIND[t.acc];
+    if (k === 'grid') { const x = (t.fills_list || []).reduce((s_, f) => s_ + (1 - p / f[0]) * 100, 0); return [x, x / 64.19]; }
+    const x = (1 - p / t.entry) * 100;
+    return [x, x / (k === 'single' ? 30 : (t.risk_pct || 1))];
+  };
+  const openRows = [...longs.filter(t => t.open), ...shorts.filter(t => t.open)].sort((a, b) => b.t_in - a.t_in);
+  document.getElementById('botOpen').innerHTML = openRows.map(t => {
+    const p = PRICES[t.symbol];
+    if (t.side === 'лонг') {
+      const res = p ? (p / t.entry_price - 1) * 100 : null;
+      const r = p ? (p - t.entry_price) * t.qty / t.risk_usd : null;
+      const left = (t.mode === 'close' ? t.entry_ms : t.t_spark + 30 * 60e3) + 48 * H - d.server_ms;
+      return `<tr><td>${t.acc}${oldTag(t)}</td><td>${chip('лонг', 'g')}</td>
+        <td><b>${t.symbol}</b> <a href="${tv(t.symbol)}" target="_blank" rel="noopener">TV</a></td>
+        <td class="mono">${fmtTime(t.entry_ms)}</td><td class="mono">${px(t.entry_price)}</td>
+        <td class="mono">${px(t.stop_now || t.stop_price)}</td>
+        <td class="mono">${px(t.level_now)}${t.mode === 'close' ? ' <span class="dim">по закрытию 5m</span>' : ''}${t.tp1_ms ? `<div class="hint">⅓ зафиксирована по ${px(t.tp1_px)}</div>` : ''}</td>
+        <td class="mono">${p ?? '?'}</td>
+        <td>${res === null ? '?' : chip(`${pct(res)} · ${num(r, 2)}R`, res >= 0 ? 'g' : 'r')}</td>
+        <td class="mono">${(left / H).toFixed(1)} ч</td><td>${manCell(t)}</td></tr>`;
+    }
+    const n = (t.fills_list || []).length || 1;
+    const [res, r] = p ? shRes(t, p) : [null, null];
+    const left = t.t_signal + 300000 + SH_HZ[SH_KIND[t.acc]] * H - sh.server_ms;
+    const man = t.man_price
+      ? `${chip(`руками ${fmtTime(t.man_ms)} по ${px(t.man_price)} (${pct(t.man_pnl_pct, 2)})`, t.man_pnl_pct >= 0 ? 'g' : 'r')}
+         <button class="shMan" data-acc="${t.acc}" data-sym="${t.symbol}" data-t="${t.t_signal}" data-cancel="1">отменить</button>`
+      : `<button class="shMan" data-acc="${t.acc}" data-sym="${t.symbol}" data-t="${t.t_signal}">закрыть руками</button>`;
+    return `<tr><td>${t.acc}${oldTag(t)}</td><td>${chip('шорт', 'r')}</td>
+      <td><b>${t.symbol}</b> <a href="${tv(t.symbol)}" target="_blank" rel="noopener">TV</a></td>
+      <td class="mono">${fmtTime(t.t_in)}</td>
+      <td class="mono">${px(t.entry)}${n > 1 ? ` / ${px(t.avg)} <span class="dim">(${n} исп.)</span>` : ''}</td>
+      <td class="mono">${px(t.stop)}</td><td class="mono">${px(t.target)}</td><td class="mono">${p ?? '?'}</td>
+      <td>${res === null ? '?' : chip(`${pct(res, 2)}${SH_KIND[t.acc] === 'grid' ? ' от заявки' : ''} · ${num(r, 2)}R`, res >= 0 ? 'g' : 'r')}</td>
+      <td class="mono">${(left / H).toFixed(1)} ч</td><td>${man}</td></tr>`;
+  }).join('') || '<tr><td colspan="11" class="dim">Открытых позиций нет.</td></tr>';
+  const closedRows = [...longs.filter(t => !t.open), ...shorts.filter(t => !t.open)].sort((a, b) => b.t_out - a.t_out).slice(0, 400);
+  document.getElementById('botClosed').innerHTML = closedRows.map(t => {
+    if (t.side === 'лонг') {
+      const breach = t.exit_level && t.exit_reason !== 'время' ? (t.exit_price / t.exit_level - 1) * 100 : null;
+      return `<tr><td class="mono">${fmtTime(t.exit_ms)}</td><td>${t.acc}${oldTag(t)}</td><td>${chip('лонг', 'g')}</td>
+        <td><b>${t.symbol}</b></td><td class="mono">${px(t.entry_price)} → ${px(t.exit_price)}</td><td class="mono">1</td>
+        <td>${t.exit_reason}${t.exit_src === 'bar' ? ' <span class="dim">по бару</span>' : ''}</td>
+        <td>${chip(`${pct(t.pnl_pct, 2)} · ${num(t.r_mult, 2)}R · $${num(t.pnl_usd, 2)}`, t.pnl_usd > 0 ? 'g' : 'r')}</td>
+        <td class="mono">${breach === null ? '' : 'пробой ' + pct(breach, 2)}</td>
+        <td>${t.man_price ? chip(`${pct(t.man_pnl_pct, 2)}`, t.man_pnl_usd > 0 ? 'g' : 'r', `руками ${fmtTime(t.man_ms)} по ${px(t.man_price)}`) : '<span class="dim">—</span>'}</td>
+        <td class="mono">${t.model_c_pct !== null && t.model_c_pct !== undefined && t.mode === 'close' ? pct(t.model_c_pct, 2) : (t.model_pct === null || t.model_pct === undefined ? '' : pct(t.model_pct, 2))}</td></tr>`;
+    }
+    return `<tr><td class="mono">${fmtTime(t.t_out)}</td><td>${t.acc}${oldTag(t)}</td><td>${chip('шорт', 'r')}</td>
+      <td><b>${t.symbol}</b> ${t.pump_pct ? `<span class="dim">памп +${Math.round(t.pump_pct)}%${t.pump_hours ? ` за ${num(t.pump_hours, 1)} ч` : ''}${t.taker_1h ? `, тейкер-покупки ${Math.round(t.taker_1h * 100)}%` : ''}</span>` : ''}</td>
+      <td class="mono">${px(t.avg)} → ${px(t.exit_price)}</td><td class="mono">${(t.fills_list || []).length}</td>
+      <td>${t.reason}</td>
+      <td>${chip(`${pct(t.pnl_pct, 2)}${SH_KIND[t.acc] === 'grid' ? ' от заявки' : ''} · ${num(t.R, 3)}R · $${num(t.pnl_usd, 2)}`, t.pnl_pct > 0 ? 'g' : 'r')}</td>
+      <td class="mono">${t.mae_pct === null ? '' : '+' + num(t.mae_pct, 1) + '%'}${t.new_high ? ' <span class="dim">выше M</span>' : ''}</td>
+      <td>${t.man_price ? chip(pct(t.man_pnl_pct, 2), t.man_pnl_pct >= 0 ? 'g' : 'r', `руками ${fmtTime(t.man_ms)} по ${px(t.man_price)}`) : '<span class="dim">—</span>'}</td>
+      <td></td></tr>`;
+  }).join('') || '<tr><td colspan="11" class="dim">Закрытых сделок пока нет.</td></tr>';
+  // ---- поздние сигналы
+  document.getElementById('virtBody').innerHTML = (sh.virtual_rows || []).filter(v => BOT_ACCS.has(v.acc)).map(v => `<tr>
+    <td class="mono">${fmtTime(v.t_signal + 300000)}</td><td>${v.acc}</td><td><b>${v.symbol}</b></td>
+    <td class="mono">${v.t_first ? fmtTime(v.t_first + 300000) : ''}</td>
+    <td class="mono">${v.first_pump === null ? '?' : '+' + Math.round(v.first_pump) + '%'} → +${Math.round(v.pump_pct)}%</td>
+    <td class="mono">${px(v.avg || v.entry)} → ${v.exit_price ? px(v.exit_price) : '…'}</td>
+    <td>${v.status === 'open' ? chip('идёт', 'y') : (v.reason || '')}</td>
+    <td>${v.pnl_pct === null ? '' : chip(`${pct(v.pnl_pct, 2)} · ${num(v.R, 3)}R`, v.pnl_pct > 0 ? 'g' : 'r')}</td>
+    <td class="dim">${v.src === 'live' ? 'вживую' : 'по истории'}</td></tr>`).join('')
+    || '<tr><td colspan="9" class="dim">Поздних сигналов пока не было.</td></tr>';
+  // ---- пропуски: лонги и шорты вместе
+  const sk = [...d.skipped.filter(s_ => BOT_ACCS.has(s_.acc)).map(s_ => ({t: s_.t_spark, acc: s_.acc, symbol: s_.symbol, why: `${s_.reason} ${s_.detail || ''}`})),
+              ...sh.trades.filter(t => t.status === 'skipped' && BOT_ACCS.has(t.acc)).map(t => ({t: t.t_signal + 300000, acc: t.acc, symbol: t.symbol, why: t.reason || ''}))]
+    .sort((a, b) => b.t - a.t).slice(0, 300);
+  document.getElementById('botSkipped').innerHTML = sk.map(s_ => `<tr><td class="mono">${fmtTime(s_.t)}</td><td>${s_.acc}</td>
+    <td>${s_.symbol}</td><td>${s_.why}</td></tr>`).join('') || '<tr><td colspan="4" class="dim">Пропусков нет.</td></tr>';
+}
+
+// ---------------------------------------------------------------- статистика
+let STATS = null;
+async function loadStats() {
+  document.getElementById('stInfo').textContent = 'считаю…';
+  STATS = await (await fetch(`/api/stats?days=${$('stDays').value}&base=${$('stBase').value}`)).json();
+  renderStats();
+}
+function cmpCell(v, e, unit, d = 1) {
+  if (v === null || v === undefined) return '<span class="dim">—</span>';
+  const t = unit === '%' ? num(v, d) + '%' : unit === 'R' ? num(v, 2) + 'R' : unit === 'ч' ? num(v, 1) + ' ч' : num(v, d);
+  if (e === null || e === undefined || !e) return t;
+  const ratio = v / e;
+  const cls = Math.abs(ratio - 1) <= 0.25 ? 'g' : Math.abs(ratio - 1) <= 0.5 ? 'y' : 'r';
+  return chip(t, cls, 'зелёный — в пределах ±25% от исследования, жёлтый — ±50%');
+}
+function renderStats() {
+  const d = STATS;
+  document.getElementById('stInfo').textContent =
+    `журнал искр за ${num(d.span_days, 1)} дн., первых за 12 ч в базе «${d.base === 'mean' ? 'среднее 20' : 'медиана'}»: ${d.n_sparks}`;
+  const fmtE = (e, unit) => e === null || e === undefined ? '<span class="dim">—</span>'
+    : (unit === '%' ? e + '%' : unit === 'R' ? e + 'R' : unit === 'ч' ? e + ' ч' : e);
+  document.getElementById('stExpect').innerHTML = d.expect.map(r => `<tr>
+    <td>${r.name}</td><td class="mono">${fmtE(r.expect, r.unit)}</td><td>${cmpCell(r.value, r.expect, r.unit)}</td>
+    <td class="mono">${r.n ?? ''}</td><td class="dim">${r.note || ''}</td></tr>`).join('');
+  document.getElementById('stScore').innerHTML = d.by_score.map(r => `<tr>
+    <td class="score ${r.score >= 4 ? 's4' : r.score === 3 ? 's3' : ''}">${r.score}</td>
+    <td class="mono">${num(r.per_day, 1)} <span class="dim">(${r.n})</span></td><td class="mono dim">${r.exp_per_day}</td>
+    <td>${cmpCell(r.pump, r.exp_pump, '%')} <span class="dim">(${r.n_out})</span></td>
+    <td class="mono dim">${r.exp_pump === null ? 'мало случаев' : r.exp_pump + '%'}</td></tr>`).join('');
+  document.getElementById('stTagsInfo').textContent =
+    `Среди всех первых за 12 ч искр пампом стали ${d.base_pump === null ? '—' : num(d.base_pump, 1) + '%'} — с этим сравнивай теги.`;
+  document.getElementById('stTags').innerHTML = d.by_tag.map(r => {
+    const better = r.pump !== null && d.base_pump !== null ? (r.pump > d.base_pump * 1.25 ? 'g' : r.pump < d.base_pump * 0.75 ? 'r' : '') : '';
+    return `<tr><td>${r.tag}</td><td class="mono">${r.n}</td>
+      <td>${r.pump === null ? '<span class="dim">—</span>' : chip(num(r.pump, 1) + '%', better)} <span class="dim">(${r.n_out})</span></td>
+      <td class="mono">${r.max12 === null ? '—' : pct(r.max12)}</td><td class="mono">${r.n_conf}</td>
+      <td class="mono">${r.pump_conf === null ? '—' : num(r.pump_conf, 1) + '%'}</td></tr>`;
+  }).join('');
+  document.getElementById('stFlags').innerHTML = d.by_flags.map(r => `<tr>
+    <td>${r.flags === 5 ? '5' : r.flags}</td><td class="mono">${r.n}</td>
+    <td class="mono">${r.avg === null ? '—' : pct(r.avg, 2)}</td><td class="mono dim">${r.exp_avg === null || r.exp_avg === undefined ? '' : pct(r.exp_avg, 2)}</td>
+    <td class="mono">${r.down_first === null ? '—' : num(r.down_first, 0) + '%'}</td>
+    <td class="mono dim">${r.exp_down ? r.exp_down + '%' : ''}</td></tr>`).join('');
+  document.getElementById('stStages').innerHTML = d.by_stage.map(r => {
+    const [cls] = STAGE[r.stage] || [''];
+    return `<tr><td>${chip(r.stage, cls)}</td><td class="mono">${r.n}</td>
+      <td class="mono">${r.avg === null ? '—' : pct(r.avg, 2)}</td>
+      <td class="mono">${r.up_first === null ? '—' : num(r.up_first, 0) + '%'}</td>
+      <td class="mono">${r.down_first === null ? '—' : num(r.down_first, 0) + '%'}</td></tr>`;
+  }).join('');
+  document.getElementById('stAccounts').innerHTML = d.accounts.map(r => `<tr>
+    <td><b>${r.acc}</b></td><td class="mono">${r.n}</td>
+    <td class="mono">${r.winrate === null ? '—' : num(r.winrate, 0) + '%'}</td>
+    <td class="mono">${r.avg === null ? '—' : pct(r.avg, 2)}</td><td class="mono">${r.r === null ? '—' : num(r.r, 2) + 'R'}</td>
+    <td class="mono">${r.slip === null ? '—' : pct(r.slip, 2)}</td><td class="mono">${r.breach === null ? '—' : pct(r.breach, 2)}</td>
+    <td class="mono">${r.by_bar}</td>
+    <td class="mono">${r.n_both ? `${pct(r.paper_both, 2)} / ${pct(r.model_both, 2)} <span class="dim">(${r.n_both})</span>` : '<span class="dim">модель созреет через 48 ч</span>'}</td>
+    <td class="mono">${r.skipped}</td></tr>`).join('');
+}
+document.querySelectorAll('.st-btn').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.st-btn').forEach(x => x.classList.toggle('active', x === b));
+  document.querySelectorAll('.st-content').forEach(x => x.classList.toggle('active', x.id === 'st-' + b.dataset.st));
+}));
+['stDays', 'stBase'].forEach(id => $(id).addEventListener('change', loadStats));
+$('stReload').addEventListener('click', loadStats);
+
+// ---------------------------------------------------------------- торговля
+let LIVE = null;
+async function loadTrade() {
+  LIVE = await (await fetch('/api/live')).json();
+  renderTrade();
+  loadExchange();
+}
+function stepsHtml(steps) {
+  return `<table>${(steps || []).map(x => `<tr><td class="mono">${new Date(x.ms).toLocaleTimeString('ru-RU', {timeZone: MSK})}.${String(x.ms % 1000).padStart(3, '0')}</td>
+    <td>${x.ok ? '✅' : '❌'} ${x.step}</td><td class="dim">${(x.detail || '').replace(/</g, '&lt;')}</td></tr>`).join('')}</table>`;
+}
+function renderTrade() {
+  const d = LIVE;
+  if (!d) return;
+  const ctl = d.control;
+  const on = ctl && ctl.value === 'on';
+  const btn = document.getElementById('trToggle');
+  btn.textContent = on ? 'Выключить автоторговлю B-c' : 'Включить автоторговлю B-c';
+  btn.dataset.on = on ? '1' : '';
+  document.getElementById('trState').innerHTML = (on ? chip('автоторговля включена', 'g b') : chip('автоторговля выключена', 'r b'))
+    + (ctl ? ` <span class="dim">с ${fmtTime(ctl.ms)}</span>` : '') + ` <span class="dim">· размер $${d.notional} на сделку</span>`;
+  const sm = d.summary;
+  document.getElementById('liveSum').innerHTML = `закрыто сделок ${sm.n} · в плюс ${sm.wins} · результат <b class="${sm.pnl >= 0 ? 'pos' : 'neg'}">$${sm.pnl.toFixed(4)}</b>
+    с комиссией (комиссии $${sm.fees.toFixed(4)})`;
+  const tr = d.trades;
+  const open = tr.filter(t => t.status === 'open' || t.status === 'opening');
+  document.getElementById('liveOpen').innerHTML = open.map(t => {
+    const p = PRICES[t.symbol];
+    const lvl = t.mclose ? t.mclose * (1 - ((t.max_price || 0) >= t.entry * 1.15 ? 0.05 : 0.08)) : t.stop;
+    const res = p && t.entry ? (p / t.entry - 1) * 100 : null;
+    return `<tr><td><b>${t.symbol}</b> <a href="${tv(t.symbol)}" target="_blank" rel="noopener">TV</a>
+        <details><summary class="dim">хронология</summary>${stepsHtml(t.steps)}</details></td>
+      <td class="mono">${t.entry_ms ? fmtTime(t.entry_ms) : '…'}</td><td class="mono">${t.qty_s || ''}</td>
+      <td class="mono">${px(t.entry)}</td><td class="mono">${px(t.stop)}</td>
+      <td class="mono">${px(lvl)} <span class="dim">${t.mclose ? 'по закрытию 5m' : 'стоп'}</span></td>
+      <td class="mono">${px(t.max_price)}</td><td class="mono">${p ?? '?'}</td>
+      <td>${res === null ? '?' : chip(pct(res), res >= 0 ? 'g' : 'r')}</td>
+      <td><button class="liveClose" data-sym="${t.symbol}">закрыть руками</button></td></tr>`;
+  }).join('') || '<tr><td colspan="10" class="dim">Открытых сделок нет.</td></tr>';
+  document.getElementById('liveClosed').innerHTML = tr.filter(t => t.status === 'closed').map(t => `<tr>
+    <td class="mono">${fmtTime(t.exit_ms)}</td><td><b>${t.symbol}</b> <span class="dim">искра ${fmtTime(t.t_spark)}</span></td>
+    <td class="mono">${px(t.entry)} → ${px(t.exit_price)} <span class="dim">${t.entry && t.exit_price ? pct((t.exit_price / t.entry - 1) * 100, 2) : ''}</span></td>
+    <td>${t.exit_reason === 'ручной' ? chip('ручной', 'i b') : t.exit_reason}</td>
+    <td>${t.pnl_usd === null ? '?' : chip('$' + t.pnl_usd.toFixed(4), t.pnl_usd >= 0 ? 'g' : 'r')}</td>
+    <td class="mono">${t.paper_pct === null || t.paper_pct === undefined ? '<span class="dim">—</span>' : pct(t.paper_pct, 2) + ' ' + (t.paper_reason || '')}</td>
+    <td><details><summary class="dim">хронология</summary>${stepsHtml(t.steps)}</details></td></tr>`).join('')
+    || '<tr><td colspan="7" class="dim">Закрытых сделок пока нет.</td></tr>';
+  document.getElementById('liveSkipped').innerHTML = tr.filter(t => t.status === 'skipped').map(t => `<tr>
+    <td class="mono">${fmtTime(t.t_spark)}</td><td>${t.symbol}</td><td>${t.exit_reason || ''}</td></tr>`).join('')
+    || '<tr><td colspan="3" class="dim">Пусто.</td></tr>';
+}
+document.getElementById('trToggle').addEventListener('click', async e => {
+  const on = !e.target.dataset.on;
+  if (!confirm(on ? 'Включить автоторговлю B-c на РЕАЛЬНОМ счёте?' : 'Выключить автоторговлю B-c? Открытые сделки бот доведёт до выхода.')) return;
+  await fetch('/api/trade/toggle', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({on})});
+  loadTrade();
+});
+document.getElementById('liveOpen').addEventListener('click', e => {
+  const b = e.target.closest('.liveClose');
+  if (!b || !confirm(`Закрыть реальную позицию ${b.dataset.sym} по рынку?`)) return;
+  sendCmd({cmd: 'close', symbol: b.dataset.sym});
+});
+async function sendCmd(body) {
+  const r = await (await fetch('/api/exchange/command', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                         body: JSON.stringify(body)})).json();
+  if (r.ok === false) alert(r.error);
+  setTimeout(loadExchange, 1500);
+}
+document.getElementById('testBtn').addEventListener('click', () => {
+  const sym = document.getElementById('testSym').value.trim().toUpperCase();
+  if (!sym) { alert('Укажи монету'); return; }
+  if (!confirm(`Запустить тестовый цикл на РЕАЛЬНОМ счёте по ${sym}? Будет вход по рынку на ≈$6 и выход через несколько секунд.`)) return;
+  sendCmd({cmd: 'test', symbol: sym});
+});
+document.getElementById('panicBtn').addEventListener('click', () => {
+  if (!confirm('АВАРИЙНАЯ КНОПКА: снять все ордера и стопы бота и закрыть позиции, открытые ботом?')) return;
+  sendCmd({cmd: 'panic'});
+});
+function renderCommands(cmds) {
+  const st = {ok: chip('успешно', 'g b'), fail: chip('ошибка', 'r b'), running: chip('выполняется…', 'y'), new: chip('в очереди', '')};
+  document.getElementById('cmdBody').innerHTML = (cmds || []).map(c => `<div class="sysbar" style="margin:6px 0">
+    <b>${c.cmd === 'test' ? 'Тестовый цикл ' + c.symbol : 'Аварийная кнопка'}</b> · ${fmtTime(c.ms)} · ${st[c.status] || c.status}
+    <table style="margin-top:4px"><tbody>${(c.steps || []).map(x => `<tr>
+      <td class="mono">${new Date(x.ms).toLocaleTimeString('ru-RU', {timeZone: MSK})}.${String(x.ms % 1000).padStart(3, '0')}</td>
+      <td>${x.ok ? '✅' : '❌'} ${x.step}</td><td class="dim">${(x.detail || '').replace(/</g, '&lt;')}</td></tr>`).join('')
+      || '<tr><td class="dim">шагов пока нет</td></tr>'}</tbody></table></div>`).join('')
+    || '<div class="dim">Тестовых циклов ещё не было.</div>';
+}
+
+// ---------------------------------------------------------------- счёт Binance (только чтение)
+async function loadExchange() {
+  const d = await (await fetch('/api/exchange')).json();
+  renderCommands(d.commands);
+  const s = d.snapshot || {};
+  const bar = document.getElementById('exBar');
+  if (s.enabled === false) {
+    bar.innerHTML = `${chip('ключей нет', 'r b')} Впиши api_key и api_secret в secrets.toml, раздел [binance], и перезапусти движок.`;
+    document.getElementById('exBody').innerHTML = '';
+    return;
+  }
+  if (!s.t) { bar.textContent = 'движок ещё не сверялся с биржей'; return; }
+  const age = Math.round((d.server_ms - s.t) / 1000);
+  const st = s.stream || {};
+  const mode = s.mode || {};
+  const a = s.account || {};
+  const n = x => x === null || x === undefined ? '?' : Number(x).toFixed(2);
+  bar.innerHTML = [
+    s.ok === false ? chip(`сверка не прошла: ${s.error}`, 'r b') : chip(`сверка ${age} с назад`, age < 150 ? 'g' : 'y'),
+    chip(st.connected ? 'поток событий подключён' : 'поток событий НЕ подключён', st.connected ? 'g' : 'r'),
+    mode.dualSidePosition === false ? chip('режим: односторонний', 'g') : chip('режим: ХЕДЖ — нужен односторонний', 'r b'),
+    mode.multiAssetsMargin === false ? chip('мультиактивы выкл.', 'g') : chip('мультиактивы ВКЛ.', 'y'),
+    `ошибок запросов: ${s.errors ?? 0}`,
+  ].join(' ');
+  const pos = s.positions || [], ord = s.orders || [], algo = s.algo_orders || [];
+  const tbl = (head, rows, empty) => `<table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${
+    rows.join('') || `<tr><td colspan="${head.length}" class="dim">${empty}</td></tr>`}</tbody></table>`;
+  document.getElementById('exBody').innerHTML = `
+    <div class="sysbar" style="display:inline-block; margin-top:6px">
+      <b>USDT:</b> кошелёк $${n(a.totalWalletBalance)} · доступно $${n(a.availableBalance)} ·
+      нереализ. ${n(a.totalUnrealizedProfit)} · маржа в позициях $${n(a.totalInitialMargin)}</div>
+    <h4>Позиции на бирже</h4>
+    ${tbl(['Монета', 'Объём', 'Вход', 'Mark', 'Ликвидация', 'Нереализ.', 'Плечо', 'Маржа'], pos.map(p => `<tr>
+      <td><b>${p.symbol}</b></td><td class="mono">${p.positionAmt}</td><td class="mono">${px(p.entryPrice)}</td>
+      <td class="mono">${px(p.markPrice)}</td><td class="mono">${px(p.liquidationPrice)}</td>
+      <td class="mono ${Number(p.unRealizedProfit) >= 0 ? 'pos' : 'neg'}">${n(p.unRealizedProfit)}</td>
+      <td class="mono">${p.leverage ?? '?'}×</td><td>${p.marginType ?? '?'}</td></tr>`), 'Позиций нет.')}
+    <h4>Открытые ордера</h4>
+    ${tbl(['Монета', 'Тип', 'Сторона', 'Цена', 'Объём', 'reduceOnly', 'ID клиента'], ord.map(o => `<tr>
+      <td>${o.symbol}</td><td>${o.type}</td><td>${o.side}</td><td class="mono">${o.price}</td><td class="mono">${o.origQty}</td>
+      <td>${o.reduceOnly}</td><td class="mono dim">${o.clientOrderId}</td></tr>`), 'Ордеров нет.')}
+    <h4>Условные ордера (стопы, algo)</h4>
+    ${s.algo_orders_error ? chip(`не получены: ${s.algo_orders_error}`, 'y') : ''}
+    ${tbl(['Монета', 'Тип', 'Сторона', 'Триггер', 'Объём', 'По цене', 'ID'], algo.map(o => `<tr>
+      <td>${o.symbol}</td><td>${o.orderType ?? o.type ?? ''}</td><td>${o.side}</td><td class="mono">${o.triggerPrice ?? o.stopPrice ?? ''}</td>
+      <td class="mono">${o.quantity ?? o.origQty ?? ''}</td><td>${o.workingType ?? ''}</td><td class="mono dim">${o.clientAlgoId ?? o.algoId ?? ''}</td></tr>`), 'Стопов нет.')}
+    <details style="margin-top:8px"><summary>Журнал запросов к бирже (последние 40)</summary>
+    ${tbl(['Время', 'Запрос', 'Статус', 'Ошибка', 'мс'], d.log.map(l => `<tr>
+      <td class="mono">${new Date(l.ms).toLocaleTimeString('ru-RU', {timeZone: MSK})}</td><td>${l.method} ${l.path}</td>
+      <td class="${l.status >= 400 || l.code ? 'neg' : ''}">${l.status}${l.code ? ' / ' + l.code : ''}</td>
+      <td class="dim">${l.msg || ''}</td><td class="mono">${l.dur_ms}</td></tr>`), 'Пусто.')}</details>
+    <details><summary>События счёта (последние 40)</summary>
+    ${tbl(['Время', 'Событие', 'Данные'], d.events.map(e => `<tr>
+      <td class="mono">${new Date(e.ms).toLocaleTimeString('ru-RU', {timeZone: MSK})}</td><td>${e.type}</td>
+      <td class="mono dim" style="max-width:900px; overflow-wrap:anywhere">${(e.data || '').slice(0, 400).replace(/</g, '&lt;')}</td></tr>`), 'Событий пока не было.')}</details>`;
+}
+
+// ---------------------------------------------------------------- выгрузка
+let EXPOLL = null;
+const mb = b => (b / 1048576).toFixed(b < 10 * 1048576 ? 1 : 0) + ' МБ';
+async function loadExport() {
+  const d = await (await fetch('/api/export')).json();
+  if (d.first_ms) document.getElementById('exRange').textContent = `(${fmtTime(d.first_ms)} … ${fmtTime(d.last_ms)})`;
+  const j = d.job || {};
+  const st = document.getElementById('exStatus');
+  const btn = document.getElementById('exStart');
+  btn.disabled = j.state === 'running';
+  if (j.state === 'running') {
+    const sec = Math.round((d.server_ms - j.started) / 1000);
+    st.innerHTML = `собираю: ${j.step} · строк ${(j.rows || 0).toLocaleString('ru-RU')} · ${sec} с`;
+  } else if (j.state === 'done') {
+    st.innerHTML = `готово: <a href="/api/export/file/${encodeURIComponent(j.file)}">${j.file}</a> (${mb(j.size)}) за ${Math.round((j.finished - j.started) / 1000)} с`;
+  } else if (j.state === 'error') {
+    st.innerHTML = `<span class="neg">ошибка: ${j.error}</span>`;
+  } else st.textContent = '';
+  document.getElementById('exFiles').innerHTML = d.files.map(f => `<tr>
+    <td><a href="/api/export/file/${encodeURIComponent(f.name)}">${f.name}</a></td>
+    <td class="mono">${fmtTime(f.mtime)}</td><td class="mono">${mb(f.size)}</td>
+    <td><button class="exDel" data-name="${f.name}">удалить</button></td></tr>`).join('')
+    || '<tr><td colspan="4" class="dim">Пока нет.</td></tr>';
+  if (j.state === 'running' && !EXPOLL) EXPOLL = setInterval(loadExport, 1000);
+  if (j.state !== 'running' && EXPOLL) { clearInterval(EXPOLL); EXPOLL = null; }
+}
+document.getElementById('exStart').addEventListener('click', async () => {
+  const mode = document.querySelector('input[name=exMode]:checked').value;
+  const raw = document.querySelector('input[name=exRaw]:checked').value;
+  const body = {mode, raw, days: $('exDays').value, from: $('exFrom').value, to: $('exTo').value,
+                before_h: $('exBefore').value, after_h: $('exAfter').value};
+  if (mode === 'range' && (!body.from || !body.to)) { alert('Укажи обе даты'); return; }
+  const r = await (await fetch('/api/export', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                               body: JSON.stringify(body)})).json();
+  if (r.ok === false) alert(r.error);
+  loadExport();
+});
+document.getElementById('exFiles').addEventListener('click', async e => {
+  const b = e.target.closest('.exDel');
+  if (!b || !confirm(`Удалить ${b.dataset.name}?`)) return;
+  await fetch('/api/export/delete', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                     body: JSON.stringify({name: b.dataset.name})});
+  loadExport();
+});
+
+// ---------------------------------------------------------------- 5m-искры
+async function loadSparks5() {
+  const d = await (await fetch(`/api/sparks5?hours=${fHours.value}`)).json();
+  S5 = d.rows;
+  setCount('cntS5', S5.length, false);
+  document.getElementById('s5Body').innerHTML = S5.map((r, i) => {
+    // Контекст на момент 5m-искры — те же фиксированные теги, что у 15m-искр в «Сигналах»
+    const first = (r.big === 1 ? chip('большая свеча', 'y b', 'рост бара больше +8%: алерт без потолка, в «первой за 12 ч» не участвует') : '')
+      + (r.first12 === 1 ? chip('первая за 12 ч', 'i') : r.first12 === 0 ? chip('повтор') : '');
+    return `<tr>
+      <td class="mono">${fmtTime(r.t)}</td>
+      <td class="coin"><b>${r.symbol}</b> <a href="${tv(r.symbol)}" target="_blank" rel="noopener">TV</a></td>
+      <td class="mono">${pct(r.ret)}</td>
+      <td class="mono">×${num(r.vx)}</td>
+      <td class="mono">${money((r.q24 || 0) * 1e6)}</td>
+      <td>${first}${cellContext(r)}</td>
+      <td class="now" data-i="${i}">${nowHtml(r)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="dim">Нет 5m-искр.</td></tr>';
+}
+
+// ---------------------------------------------------------------- статус движка
+const REG_CLS = {'рост': 'g', 'нейтрально': 'y', 'падение': 'r'};
+function regimeChip(rg, title = '') {
+  if (!rg) return '';
+  return chip(rg, (REG_CLS[rg] || '') + ' b', title);
+}
+function renderRegime(r) {
+  const el = document.getElementById('regimeBar');
+  if (!r) { el.innerHTML = '<span class="dim">Режим рынка: ещё не посчитан</span>'; return; }
+  const f = x => x === null || x === undefined ? '?' : pct(x, 2);
+  el.innerHTML = `Режим рынка: ${r.regime ? regimeChip(r.regime) : '<span class="dim">нужно 72 ч истории</span>'}
+    <span class="mono">альты 24 ч ${f(r.mkt24)} · 72 ч ${f(r.mkt72)} · выше, чем сутки назад: ${r.breadth24 === null ? '?' : Math.round(r.breadth24) + '%'}
+    · BTC 24 ч ${f(r.btc24)}</span> <span class="dim">(бар ${fmtTime(r.t + 300000)})</span>`;
+}
+function renderStatus(st) {
+  renderRegime(st._regime);
+  const v = k => st[k] ? st[k].value : '?';
+  const hb = st.heartbeat ? st.heartbeat.t : 0;
+  const age = Math.round(((st._server_ms || Date.now()) - hb) / 1000);
+  const alive = hb && age < (UI.heartbeat_alert_sec || 180);
+  const [k, got] = (v('oi_last_bar') || '').split(' ');
+  document.getElementById('engineBar').innerHTML =
+    (alive ? `<span class="ok">Движок работает</span> (сигнал ${age} с назад)` : `<span class="alert">Движок молчит ${hb ? age + ' с' : ''}</span>`)
+    + ` · WS свечи ${v('ws_klines_up')}, тикеры ${v('ws_misc_up') === '1' ? 'да' : '<span class="alert">нет</span>'}`
+    + ` · монет с последним баром ${v('symbols_fresh')}/${v('symbols')}`
+    + ` · OI за бар ${got || '?'} · L/S свежих ${v('ls_fresh')}`
+    + (v('backfill_done') === '1' ? '' : ' · <span class="alert">идёт догрузка истории</span>')
+    + ` · конфиг ${v('config')}`
+    + (st.clock_offset ? ` · часы ${Number(st.clock_offset.value) > 0 ? '+' : ''}${st.clock_offset.value} мс` : '')
+    + (st.hard_resets ? ` · <span title="${(st.hard_reset || {}).value || ''}">жёстких перезапусков ${st.hard_resets.value}, последний ${fmtTime(st.hard_reset.t)}</span>` : '');
+}
+
+// ---------------------------------------------------------------- события
+document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tab-btn').forEach(x => x.classList.toggle('active', x === b));
+  document.querySelectorAll('.tab-content').forEach(x => x.classList.toggle('active', x.id === 'tab-' + b.dataset.tab));
+  if (b.dataset.tab === 'watchlist') { loadSparks5(); loadWatch(); }
+  if (b.dataset.tab === 'bot') loadBot();
+  if (b.dataset.tab === 'trade') loadTrade();
+  if (b.dataset.tab === 'stats') loadStats();
+  if (b.dataset.tab === 'export') loadExport();
+}));
+['fBase', 'fScore', 'fTurnMin', 'fTurnMax', 'fFirst', 'fConf', 'fOver', 'fFocus'].forEach(id =>
+  document.getElementById(id).addEventListener('input', render));
+fHours.addEventListener('change', loadSignals);
+// Галочки счетов для таблиц «Бота»; выбор запоминается в браузере (новые счета включены по умолчанию)
+const LONG_ACCS = [...ACCOUNTS, ...ACCOUNTS.map(a => a + '·сп')];
+const ALL_ACCS = [...LONG_ACCS, ...SH_ACCOUNTS];
+let BOT_ACCS = new Set(ALL_ACCS);
+try {
+  const sv = JSON.parse(localStorage.getItem('botAccs') || 'null');
+  const known = new Set(JSON.parse(localStorage.getItem('botAccsKnown') || '[]'));
+  if (Array.isArray(sv)) BOT_ACCS = new Set([...sv, ...ALL_ACCS.filter(a => !known.has(a))]);
+} catch (e) {}
+function drawAccBoxes() {
+  const box = a => `<label><input type="checkbox" class="botAcc" value="${a}" ${BOT_ACCS.has(a) ? 'checked' : ''}> ${a}</label>`;
+  document.getElementById('botAccBase').innerHTML = ACCOUNTS.map(box).join(' ');
+  document.getElementById('botAccCalm').innerHTML = ACCOUNTS.map(a => box(a + '·сп')).join(' ');
+  document.getElementById('botAccShort').innerHTML = SH_ACCOUNTS.map(box).join(' ');
+}
+function saveAccs() {
+  try { localStorage.setItem('botAccs', JSON.stringify([...BOT_ACCS])); localStorage.setItem('botAccsKnown', JSON.stringify(ALL_ACCS)); } catch (e) {}
+}
+drawAccBoxes();
+['botAccBase', 'botAccCalm', 'botAccShort'].forEach(id => document.getElementById(id).addEventListener('input', e => {
+  const c = e.target.closest('.botAcc');
+  if (!c) return;
+  c.checked ? BOT_ACCS.add(c.value) : BOT_ACCS.delete(c.value);
+  saveAccs(); renderBot();
+}));
+const setAccs = list => { BOT_ACCS = new Set(list); saveAccs(); drawAccBoxes(); renderBot(); };
+document.getElementById('botAccAll').addEventListener('click', () => setAccs(ALL_ACCS));
+document.getElementById('botAccNone').addEventListener('click', () => setAccs([]));
+document.getElementById('botAccLong').addEventListener('click', () => setAccs(LONG_ACCS));
+document.getElementById('botAccShorts').addEventListener('click', () => setAccs(SH_ACCOUNTS));
+document.getElementById('botOld').addEventListener('input', renderBot);
+document.getElementById('botOpen').addEventListener('click', async e => {
+  const lb = e.target.closest('.manBtn'), sb = e.target.closest('.shMan');
+  const b = lb || sb;
+  if (!b) return;
+  const cancel = !!b.dataset.cancel;
+  if (!cancel && !confirm(`Записать ручное закрытие ${b.dataset.acc} ${b.dataset.sym} по текущей цене? Сделка счёта продолжится по правилам.`)) return;
+  const r = lb
+    ? await (await fetch('/api/manual', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({acc: b.dataset.acc, symbol: b.dataset.sym, t_spark: Number(b.dataset.t), cancel})})).json()
+    : await (await fetch('/api/short_manual', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({acc: b.dataset.acc, symbol: b.dataset.sym, t_signal: Number(b.dataset.t), cancel})})).json();
+  if (r.ok === false) alert(r.error);
+  loadBot();
+});
+['botCards', 'shCards'].forEach(id => document.getElementById(id).addEventListener('click', async e => {
+  const b = e.target.closest('.accReset');
+  if (!b) return;
+  if (!confirm(`Начать счёт ${b.dataset.acc} заново? Баланс снова $100, лимиты и итоги — по новым сделкам. Старые сделки не удаляются и останутся как «прошлый период»; открытые сейчас позиции доведутся до выхода и в новый баланс не войдут.`)) return;
+  const r = await (await fetch('/api/account/reset', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({acc: b.dataset.acc})})).json();
+  if (r.ok === false) alert(r.error);
+  loadBot();
+}));
+['wCreepAll'].forEach(id => document.getElementById(id).addEventListener('input', renderWatch));
+document.querySelectorAll('.rsiTf').forEach(x => x.addEventListener('input', renderRsi));
+document.getElementById('rsiTurn').addEventListener('input', renderRsi);
+
+function showSub(name) {
+  document.querySelectorAll('#tab-watchlist .sub-btn').forEach(x => x.classList.toggle('active', x.dataset.sub === name));
+  document.querySelectorAll('#tab-watchlist .sub-content').forEach(x => x.classList.toggle('active', x.id === 'sub-' + name));
+  try { localStorage.setItem('wlSub', name); } catch (e) {}
+  if (name === 'pumps') loadPumps();
+}
+document.querySelectorAll('#tab-watchlist .sub-btn').forEach(b => b.addEventListener('click', () => showSub(b.dataset.sub)));
+try { const saved = localStorage.getItem('wlSub'); if (saved && document.getElementById('sub-' + saved)) showSub(saved); } catch (e) {}
+
+function setCount(id, n, hot) {
+  const el = document.getElementById(id);
+  el.textContent = n;
+  el.classList.toggle('hot', !!hot && n > 0);
+}
+
+document.getElementById('sigBody').addEventListener('click', async e => {
+  const b = e.target.closest('.star');
+  if (!b) return;
+  const sym = b.dataset.sym, on = !FOCUS.has(sym);
+  on ? FOCUS.add(sym) : FOCUS.delete(sym);
+  render();
+  await fetch('/api/focus', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                             body: JSON.stringify({symbol: sym, on})});
+});
+
+function connect() {
+  const es = new EventSource('/api/stream');
+  es.addEventListener('signals', () => loadSignals());
+  es.addEventListener('prices', e => {
+    Object.assign(PRICES, JSON.parse(e.data)); updatePrices();
+    if (document.getElementById('tab-bot').classList.contains('active')) renderBot();
+    if (document.getElementById('tab-trade').classList.contains('active')) renderTrade();
+  });
+  es.addEventListener('status', e => renderStatus(JSON.parse(e.data)));
+  es.onerror = () => {
+    document.getElementById('engineBar').innerHTML = '<span class="alert">Нет связи с вебом — переподключаюсь…</span>';
+  };
+}
+
+(async () => {
+  const c = await (await fetch('/api/config')).json();
+  UI = c.ui; TH = c.thresholds;
+  setDefaults();
+  await loadSignals();
+  renderStatus(await (await fetch('/api/status')).json());
+  connect();
+})();
+</script>
+</body>
+</html>
