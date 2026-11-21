@@ -168,10 +168,84 @@ ENGINE_SQL = {
 }
 
 
+# ================================================================ Bybit / OKX
+# lake/<биржа>/<набор>/ГГГГ-ММ.parquet (история, csv_to_lake.py)
+# + lake/live/<биржа>/<набор>/ГГГГ-ММ-ДД.parquet (дни из движка).
+# Схемы как у Binance: funding — symbol, t, interval_h, rate; oi_* — symbol, t, oi (монеты), oi_usd.
+XSCHEMA_OI = pa.schema([("symbol", pa.string()), ("t", pa.int64()),
+                        ("oi", pa.float64()), ("oi_usd", pa.float64())])
+XSETS = {
+    "bybit": {"funding": SCHEMAS["funding"], "oi_5m": XSCHEMA_OI, "oi_15m": XSCHEMA_OI},
+    "okx":   {"funding": SCHEMAS["funding"], "oi_5m": XSCHEMA_OI, "oi_1h": XSCHEMA_OI, "oi_1d": XSCHEMA_OI},
+}
+XENGINE_SQL: dict = {}   # (биржа, набор) -> SQL к базе движка; заполним, когда движок начнёт собирать
+
+
+def _layered(con, names, dirs, engine_sql=None) -> list[str]:
+    """Части UNION: каждый следующий слой берётся только после последнего t предыдущего."""
+    parts, cut = [], None
+    cols = ", ".join(names)
+    for sub in dirs:
+        files = sorted(sub.glob("*.parquet")) if sub.exists() else []
+        if not files:
+            continue
+        src = f"read_parquet('{(sub / '*.parquet').as_posix()}', union_by_name=true)"
+        parts.append(f"SELECT {cols} FROM {src}" + (f" WHERE t > {cut}" if cut else ""))
+        mx = con.execute(f"SELECT MAX(t) FROM read_parquet('{files[-1].as_posix()}')").fetchone()[0]
+        cut = max(cut or 0, mx or 0) or cut
+    if engine_sql:
+        try:
+            con.execute(f"SELECT 1 FROM ({engine_sql}) LIMIT 1")
+            parts.append(f"SELECT * FROM ({engine_sql})" + (f" WHERE t > {cut}" if cut else ""))
+        except Exception:                                     # noqa: BLE001
+            pass
+    return parts
+
+
+def _cross_views(con, xviews: dict) -> None:
+    """symbol_map, funding_all, oi_5m_all — сводные таблицы по всем биржам."""
+    fund = [("binance", "funding")] + [(ex, xviews[(ex, "funding")]) for ex in XSETS if (ex, "funding") in xviews]
+    sel = " UNION ALL ".join(f"SELECT DISTINCT '{ex}' AS exchange, symbol FROM {v}" for ex, v in fund)
+    # core — тикер без множителя (1000PEPEUSDT, SHIB1000USDT -> PEPEUSDT, SHIBUSDT);
+    # mult — сколько монет в одной единице тикера; bsymbol — такой же тикер на Binance
+    con.execute(f"""
+        CREATE OR REPLACE TABLE symbol_map AS
+        WITH s AS ({sel}),
+        p AS (
+            SELECT exchange, symbol,
+                   regexp_extract(symbol, '^(1000000|10000|1000|1M)[A-Z]', 1) AS pre,
+                   regexp_extract(symbol, '[A-Z](1000)USDT$', 1) AS suf,
+                   regexp_replace(regexp_replace(symbol, '^(1000000|10000|1000|1M)([A-Z])', '\\2'),
+                                  '([A-Z])1000USDT$', '\\1USDT') AS core
+            FROM s WHERE symbol IS NOT NULL
+        ),
+        b AS (SELECT symbol, core FROM p WHERE exchange = 'binance')
+        SELECT p.exchange, p.symbol, p.core,
+               CASE p.pre WHEN '1000000' THEN 1e6 WHEN '1M' THEN 1e6 WHEN '10000' THEN 1e4
+                          WHEN '1000' THEN 1e3
+                          ELSE CASE WHEN p.suf = '1000' THEN 1e3 ELSE 1 END END AS mult,
+               COALESCE(MAX(CASE WHEN b.symbol = p.symbol THEN b.symbol END), MIN(b.symbol)) AS bsymbol
+        FROM p LEFT JOIN b ON b.core = p.core
+        GROUP BY p.exchange, p.symbol, p.core, p.pre, p.suf
+    """)
+    parts = [f"SELECT '{ex}' AS exchange, f.symbol, m.bsymbol, (f.t // 60000) * 60000 AS t, "
+             f"f.interval_h, f.rate FROM {v} f "
+             f"LEFT JOIN symbol_map m ON m.exchange = '{ex}' AND m.symbol = f.symbol" for ex, v in fund]
+    con.execute("CREATE OR REPLACE VIEW funding_all AS " + " UNION ALL ".join(parts))
+
+    oi = [("binance", "metrics_5m")] + [(ex, xviews[(ex, "oi_5m")]) for ex in XSETS if (ex, "oi_5m") in xviews]
+    parts = [f"SELECT '{ex}' AS exchange, o.symbol, m.bsymbol, o.t, o.oi * COALESCE(m.mult, 1) AS oi_coins, "
+             f"o.oi_usd FROM {v} o "
+             f"LEFT JOIN symbol_map m ON m.exchange = '{ex}' AND m.symbol = o.symbol" for ex, v in oi]
+    con.execute("CREATE OR REPLACE VIEW oi_5m_all AS " + " UNION ALL ".join(parts))
+
+
 def open_lake(cfg: dict, engine_db: Path | None = None):
-    """DuckDB в памяти с представлениями klines_5m, klines_1m, metrics_5m, funding, book_depth_5m.
+    """DuckDB в памяти с представлениями klines_5m, klines_1m, metrics_5m, funding, book_depth_5m,
+    наборами Bybit/OKX (bybit_funding, okx_oi_1h, …) и сводными symbol_map, funding_all, oi_5m_all.
     Граница слоёв — по времени: архив до своего последнего бара, дальше дневные файлы движка, дальше его база."""
     import duckdb
+    import logging
     lake = lake_dir(cfg)
     con = duckdb.connect()
     if engine_db is not None and Path(engine_db).exists():
@@ -180,28 +254,32 @@ def open_lake(cfg: dict, engine_db: Path | None = None):
             con.execute(f"ATTACH '{Path(engine_db).as_posix()}' AS eng (TYPE sqlite, READ_ONLY)")
         except Exception:                                     # noqa: BLE001
             engine_db = None
+
+    # Binance — как раньше
     for ds in ("klines_5m", "klines_1m", "metrics_5m", "funding", "book_depth_5m"):
-        parts, cut = [], None
-        for sub in (lake / ds, lake / "live" / ds):
-            files = sorted(sub.glob("*.parquet")) if sub.exists() else []
-            if not files:
-                continue
-            src = f"read_parquet('{(sub / '*.parquet').as_posix()}', union_by_name=true)"
-            parts.append(f"SELECT {', '.join(SCHEMAS[ds].names)} FROM {src}" + (f" WHERE t > {cut}" if cut else ""))
-            mx = con.execute(f"SELECT MAX(t) FROM {src}").fetchone()[0]
-            cut = max(cut or 0, mx or 0) or cut
-        if engine_db is not None and ds in ENGINE_SQL:
-            try:
-                con.execute(f"SELECT 1 FROM ({ENGINE_SQL[ds]}) LIMIT 1")
-                parts.append(f"SELECT * FROM ({ENGINE_SQL[ds]})" + (f" WHERE t > {cut}" if cut else ""))
-            except Exception:                                 # noqa: BLE001
-                pass
+        parts = _layered(con, SCHEMAS[ds].names, (lake / ds, lake / "live" / ds),
+                         ENGINE_SQL.get(ds) if engine_db is not None else None)
         if parts:
             con.execute(f"CREATE OR REPLACE VIEW {ds} AS " + " UNION ALL ".join(parts))
         else:
             cols = ", ".join(f"NULL::{'VARCHAR' if n == 'symbol' else 'BIGINT' if n in ('t', 'n', 'ts') else 'DOUBLE'} "
                              f"AS {n}" for n in SCHEMAS[ds].names)
             con.execute(f"CREATE OR REPLACE VIEW {ds} AS SELECT {cols} WHERE false")
+
+    # Bybit / OKX — представление создаётся, только если есть данные
+    xviews = {}
+    for ex, sets in XSETS.items():
+        for ds, schema in sets.items():
+            parts = _layered(con, schema.names, (lake / ex / ds, lake / "live" / ex / ds),
+                             XENGINE_SQL.get((ex, ds)) if engine_db is not None else None)
+            if parts:
+                name = f"{ex}_{ds}"
+                con.execute(f"CREATE OR REPLACE VIEW {name} AS " + " UNION ALL ".join(parts))
+                xviews[(ex, ds)] = name
+    try:
+        _cross_views(con, xviews)
+    except Exception:                                         # noqa: BLE001
+        logging.getLogger("lake").warning("сводные представления по биржам не созданы", exc_info=True)
     return con
 
 
